@@ -203,7 +203,7 @@ again:
 	}
 
 	__read_u32le(log->fd, &event_size);
-	if (event_size > 8192)
+	if (event_size > 1024*1024)
 		fatal("Oversized TPM2 event log entry with %u bytes of data\n", event_size);
 
 	ev->event_data = calloc(1, event_size);
