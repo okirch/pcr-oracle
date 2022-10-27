@@ -103,14 +103,52 @@ char *
 runtime_disk_for_partition(const char *part_dev)
 {
 	int len = strlen(part_dev);
+	char *part_name;
+	char sys_block[PATH_MAX];
+	char sys_device[PATH_MAX];
+	ssize_t link_size;
+	char *disk_name;
+	size_t r_size;
 	char *result;
 
 	if (len == 0 || !isdigit(part_dev[len-1]))
 		return NULL;
 
-	result = strdup(part_dev);
-	while (len && isdigit(result[len-1]))
-		result[--len] = '\0';
+	/* Get the disk name from the sysfs path */
+	/* example:
+	 *   To get the disk device name of /dev/nvme0n1p1
+	 *
+	 *   Look into the link to the sysfs block device:
+	 *   $ ls -l /sys/class/block/nvme0n1p1
+	 *   lrwxrwxrwx 1 root root 0 Oct 19 09:53 /sys/class/block/nvme0n1p1 -> ../../devices/pci0000:00/0000:00:06.0/0000:02:00.0/nvme/nvme0/nvme0n1/nvme0n1p1
+	 *
+	 *   Trace back the upper level directory to get "nvme0n1"
+	 *   and return "/dev/nvme0n1"
+	 */
+	part_name = strrchr(part_dev, '/')+1;
+
+	snprintf(sys_block, PATH_MAX, "/sys/class/block/%s", part_name);
+
+	link_size = readlink(sys_block, sys_device, PATH_MAX);
+	if (link_size < 0) {
+		error("Error when reading the link of %s: %m\n", sys_block);
+		return NULL;
+	} else if (link_size >= PATH_MAX) {
+		error("Error insufficient buffer size for the link of %s\n", sys_block);
+		return NULL;
+	}
+
+	*strrchr(sys_device, '/') = '\0';
+	disk_name = strrchr(sys_device, '/')+1;
+
+	r_size = strlen("/dev/") + strlen(disk_name) + 1;
+	result = malloc(r_size);
+	if (result == NULL) {
+		error("Error when allocating buffer: %m\n");
+		return NULL;
+	}
+	snprintf(result, r_size, "/dev/%s", disk_name);
+
 	return result;
 }
 
