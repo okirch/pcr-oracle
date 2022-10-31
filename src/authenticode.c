@@ -83,6 +83,22 @@ typedef struct pecoff_image_info {
 
 	unsigned int		format;
 
+	struct {
+		uint32_t	offset;
+		uint16_t	machine_id;
+		uint16_t	num_sections;
+		uint32_t	symtab_offset;
+		uint16_t	optional_hdr_size;
+		uint32_t	optional_hdr_offset;
+
+		uint32_t	section_table_offset;
+	} pe_hdr;
+
+	struct {
+		uint32_t	size_of_headers;
+		uint32_t	data_dir_count;
+	} pe_optional_header;
+
 	unsigned int		num_data_dirs;
 	pecoff_image_datadir_t *data_dirs;
 
@@ -243,8 +259,26 @@ authenticode_compute(authenticode_image_info_t *info, buffer_t *in, digest_ctx_t
 	return digest_ctx_final(digest, &md);
 }
 
+static inline bool
+__pecoff_seek(buffer_t *in, const pecoff_image_info_t *img, unsigned int offset)
+{
+	return buffer_seek_read(in, img->pe_hdr.offset + offset);
+}
+
+static inline bool
+__pecoff_get_u16(buffer_t *in, const pecoff_image_info_t *img, unsigned int offset, uint16_t *vp)
+{
+	return __pecoff_seek(in, img, offset) && buffer_get_u16le(in, vp);
+}
+
+static inline bool
+__pecoff_get_u32(buffer_t *in, const pecoff_image_info_t *img, unsigned int offset, uint32_t *vp)
+{
+	return __pecoff_seek(in, img, offset) && buffer_get_u32le(in, vp);
+}
+
 static const char *
-__pecoff_get_machine(buffer_t *in, uint32_t pe_offset)
+__pecoff_get_machine(const pecoff_image_info_t *img)
 {
 	static struct {
 		unsigned int	id;
@@ -256,29 +290,57 @@ __pecoff_get_machine(buffer_t *in, uint32_t pe_offset)
 		{ 0x8664,	"x86_64"	},
 		{ 0, NULL }
 	}, *p;
-	uint16_t pe_machine_id;
 
-	if (!buffer_seek_read(in, pe_offset + PECOFF_HEADER_MACHINE_OFFSET)
-	 || !buffer_get_u16le(in, &pe_machine_id))
-		return NULL;
-
-	pe_debug("  Machine ID 0x%x\n", pe_machine_id);
+	pe_debug("  Machine ID 0x%x\n", img->pe_hdr.machine_id);
 	for (p = pe_machine_ids; p->name; ++p) {
-		if (p->id == pe_machine_id)
+		if (p->id == img->pe_hdr.machine_id)
 			return p->name;
 	}
 
-	pe_debug("PE/COFF image has unsupported machine ID 0x%x\n", pe_machine_id);
+	pe_debug("PE/COFF image has unsupported machine ID 0x%x\n", img->pe_hdr.machine_id);
 	return "unsupported";
 }
 
 static bool
-__pecoff_process_optional_header(buffer_t *in, unsigned int hdr_offset, unsigned int hdr_size, pecoff_image_info_t *info)
+__pecoff_process_header(buffer_t *in, pecoff_image_info_t *img)
 {
+	if (!buffer_seek_read(in, MSDOS_STUB_PE_OFFSET)
+	 || !buffer_get_u32le(in, &img->pe_hdr.offset))
+		return false;
+
+	if (!buffer_seek_read(in, img->pe_hdr.offset)
+	 || memcmp(buffer_read_pointer(in), "PE\0\0", 4))
+		return false;
+
+	/* PE header starts immediately after the PE signature */
+	img->pe_hdr.offset += 4;
+
+	if (!__pecoff_get_u16(in, img, PECOFF_HEADER_MACHINE_OFFSET, &img->pe_hdr.machine_id))
+		return NULL;
+
+	if (!__pecoff_get_u16(in, img, PECOFF_HEADER_NUMBER_OF_SECTIONS_OFFSET, &img->pe_hdr.num_sections))
+		return false;
+
+	if (!__pecoff_get_u32(in, img, PECOFF_HEADER_SYMTAB_POS_OFFSET, &img->pe_hdr.symtab_offset))
+		return false;
+
+	img->pe_hdr.optional_hdr_offset = img->pe_hdr.offset + PECOFF_HEADER_LENGTH;
+	if (!__pecoff_get_u16(in, img, PECOFF_HEADER_OPTIONAL_HDR_SIZE_OFFSET, &img->pe_hdr.optional_hdr_size))
+		return false;
+
+	img->pe_hdr.section_table_offset = img->pe_hdr.optional_hdr_offset + img->pe_hdr.optional_hdr_size;
+
+	return true;
+}
+
+static bool
+__pecoff_process_optional_header(buffer_t *in, pecoff_image_info_t *info)
+{
+	unsigned int hdr_offset = info->pe_hdr.optional_hdr_offset;
+	unsigned int hdr_size = info->pe_hdr.optional_hdr_size;
 	buffer_t hdr;
 	uint16_t magic;
 	unsigned int data_dir_offset, i, hash_base = 0;
-	uint32_t data_dir_count, size_of_headers;
 
 	if (hdr_size == 0) {
 		error("Invalid PE image: OptionalHdrSize can't be 0\n");
@@ -296,7 +358,6 @@ __pecoff_process_optional_header(buffer_t *in, unsigned int hdr_offset, unsigned
 
 	switch (magic) {
 	case PECOFF_FORMAT_PE32:
-		pe_debug("  PECOFF image format: PE32\n");
 		/* We do not point to the Data Directory itself as defined in the
 		 * PE spec, but to NumberOfRvaAndSizes which is the 32bit word
 		 * immediately preceding the Data Directory. */
@@ -304,7 +365,6 @@ __pecoff_process_optional_header(buffer_t *in, unsigned int hdr_offset, unsigned
 		break;
 
 	case PECOFF_FORMAT_PE32_PLUS:
-		pe_debug("  PECOFF image format: PE32+\n");
 		/* We do not point to the Data Directory itself as defined in the
 		 * PE spec, but to NumberOfRvaAndSizes which is the 32bit word
 		 * immediately preceding the Data Directory. */
@@ -319,10 +379,8 @@ __pecoff_process_optional_header(buffer_t *in, unsigned int hdr_offset, unsigned
 	info->format = magic;
 
 	if (!buffer_seek_read(&hdr, PECOFF_OPTIONAL_HDR_SIZEOFHEADERS_OFFSET)
-	 || !buffer_get_u32le(&hdr, &size_of_headers))
+	 || !buffer_get_u32le(&hdr, &info->pe_optional_header.size_of_headers))
 		return false;
-
-	pe_debug("  Size of headers: %d\n", size_of_headers);
 
 	/* Skip the checksum field when computing the digest.
 	 * The offset of the checksum is the same for PE32 and PE32+ */
@@ -330,28 +388,23 @@ __pecoff_process_optional_header(buffer_t *in, unsigned int hdr_offset, unsigned
 			hdr_offset + PECOFF_OPTIONAL_HDR_CHECKSUM_OFFSET, 4);
 
 	if (!buffer_seek_read(&hdr, data_dir_offset)
-	 || !buffer_get_u32le(&hdr, &data_dir_count))
+	 || !buffer_get_u32le(&hdr, &info->pe_optional_header.data_dir_count))
 		return false;
 
-	pe_debug("  Data dir entries: %d\n", data_dir_count);
-
-	if (data_dir_count <= PECOFF_DATA_DIRECTORY_CERTTBL_INDEX) {
+	if (info->pe_optional_header.data_dir_count <= PECOFF_DATA_DIRECTORY_CERTTBL_INDEX) {
 		error("PECOFF data directory too small - cannot find Certificate Table (expected at index %u)\n", PECOFF_DATA_DIRECTORY_CERTTBL_INDEX);
 		return false;
 	}
 
-	info->data_dirs = calloc(data_dir_count, sizeof(info->data_dirs[0]));
-	info->num_data_dirs = data_dir_count;
+	info->data_dirs = calloc(info->pe_optional_header.data_dir_count, sizeof(info->data_dirs[0]));
+	info->num_data_dirs = info->pe_optional_header.data_dir_count;
 
-	for (i = 0; i < data_dir_count; ++i) {
+	for (i = 0; i < info->pe_optional_header.data_dir_count; ++i) {
 		pecoff_image_datadir_t *de = info->data_dirs + i;
 
 		if (!buffer_get_u32le(&hdr, &de->addr)
 		 || !buffer_get_u32le(&hdr, &de->size))
 			return false;
-
-		if (de->size)
-			pe_debug("  Data dir %d: %u bytes at %08x\n", i, de->size, de->addr);
 	}
 
 	/* Exclude the data directory entry pointing to the certificate table */
@@ -363,15 +416,17 @@ __pecoff_process_optional_header(buffer_t *in, unsigned int hdr_offset, unsigned
 			info->data_dirs[PECOFF_DATA_DIRECTORY_CERTTBL_INDEX].size);
 
 	/* digest everything until the end of the PE headers, incl the section headers */
-	authenticode_add_range(info->auth_info, hash_base, size_of_headers - hash_base);
-	info->auth_info->hashed_bytes = size_of_headers;
+	authenticode_add_range(info->auth_info, hash_base, info->pe_optional_header.size_of_headers - hash_base);
+	info->auth_info->hashed_bytes = info->pe_optional_header.size_of_headers;
 
 	return true;
 }
 
 static bool
-__pecoff_process_sections(buffer_t *in, unsigned int tbl_offset, unsigned int num_sections, pecoff_image_info_t *info)
+__pecoff_process_sections(buffer_t *in, pecoff_image_info_t *info)
 {
+	unsigned int tbl_offset = info->pe_hdr.section_table_offset;
+	unsigned int num_sections = info->pe_hdr.num_sections;
 	buffer_t hdr;
 	unsigned int i;
 	pecoff_section_t *sec;
@@ -416,56 +471,70 @@ __pecoff_process_sections(buffer_t *in, unsigned int tbl_offset, unsigned int nu
 	return true;
 }
 
+static inline void
+__pecoff_show_header(pecoff_image_info_t *img)
+{
+	pe_debug("  PE header at 0x%x\n", img->pe_hdr.offset);
+	pe_debug("  Architecture: %s\n", __pecoff_get_machine(img));
+	pe_debug("  Number of sections: %d\n", img->pe_hdr.num_sections);
+	pe_debug("  Symbol table position: 0x%08x\n", img->pe_hdr.symtab_offset);
+	pe_debug("  Optional header size: %d\n", img->pe_hdr.optional_hdr_size);
+}
+
+static inline void
+__pecoff_show_optional_header(pecoff_image_info_t *img)
+{
+	unsigned int i;
+
+	switch (img->format) {
+	case PECOFF_FORMAT_PE32:
+		pe_debug("  PECOFF image format: PE32\n");
+		break;
+
+	case PECOFF_FORMAT_PE32_PLUS:
+		pe_debug("  PECOFF image format: PE32+\n");
+		break;
+
+	default:
+		pe_debug("  PECOFF image format: unknown\n");
+		break;
+	}
+
+	pe_debug("  Size of headers: %d\n", img->pe_optional_header.size_of_headers);
+	pe_debug("  Data dir entries: %d\n", img->pe_optional_header.data_dir_count);
+
+	for (i = 0; i < img->num_data_dirs; ++i) {
+		pecoff_image_datadir_t *de = img->data_dirs + i;
+
+		if (de->size)
+			pe_debug("  Data dir %d: %u bytes at %08x\n", i, de->size, de->addr);
+	}
+}
+
 static bool
 __pecoff_get_authenticode_ranges(buffer_t *in, authenticode_image_info_t *auth_info)
 {
-	uint32_t pe_offset, pe_symtab_offset;
-	uint16_t pe_optional_hdr_size, pe_num_sections;
 	pecoff_image_info_t img_info;
-	const char *arch;
 
 	memset(&img_info, 0, sizeof(img_info));
 	img_info.auth_info = auth_info;
 
-	if (!buffer_seek_read(in, MSDOS_STUB_PE_OFFSET)
-	 || !buffer_get_u32le(in, &pe_offset))
-		return false;
-
-	if (!buffer_seek_read(in, pe_offset)
-	 || memcmp(buffer_read_pointer(in), "PE\0\0", 4))
-		return false;
-
 	pe_debug("Processing PE COFF image\n");
-	pe_debug("  PE header at 0x%x\n", pe_offset);
-
-	/* PE header starts immediately after the PE signature */
-	pe_offset += 4;
-
-	if (!(arch = __pecoff_get_machine(in, pe_offset)))
+	if (!__pecoff_process_header(in, &img_info)) {
+		error("PECOFF: error processing image header\n");
 		return false;
-	pe_debug("  Architecture: %s\n", arch);
+	}
 
-	if (!buffer_seek_read(in, pe_offset + PECOFF_HEADER_NUMBER_OF_SECTIONS_OFFSET)
-	 || !buffer_get_u16le(in, &pe_num_sections))
-		return false;
-	pe_debug("  Number of sections: %d\n", pe_num_sections);
+	__pecoff_show_header(&img_info);
 
-	if (!buffer_seek_read(in, pe_offset + PECOFF_HEADER_SYMTAB_POS_OFFSET)
-	 || !buffer_get_u32le(in, &pe_symtab_offset))
-		return false;
-	pe_debug("  Symbol table position: 0x%08x\n", pe_symtab_offset);
-
-	if (!buffer_seek_read(in, pe_offset + PECOFF_HEADER_OPTIONAL_HDR_SIZE_OFFSET)
-	 || !buffer_get_u16le(in, &pe_optional_hdr_size))
-		return false;
-
-	pe_debug("  Optional header size: %d\n", pe_optional_hdr_size);
-	if (!__pecoff_process_optional_header(in, pe_offset + PECOFF_HEADER_LENGTH, pe_optional_hdr_size, &img_info)) {
+	if (!__pecoff_process_optional_header(in, &img_info)) {
 		error("PECOFF: error processing optional header of image file\n");
 		return false;
 	}
 
-	if (!__pecoff_process_sections(in, pe_offset + PECOFF_HEADER_LENGTH + pe_optional_hdr_size, pe_num_sections, &img_info)) {
+	__pecoff_show_optional_header(&img_info);
+
+	if (!__pecoff_process_sections(in, &img_info)) {
 		error("PECOFF: error processing section table of image file\n");
 		return false;
 	}
