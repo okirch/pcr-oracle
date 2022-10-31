@@ -21,6 +21,7 @@
 #ifndef EVENTLOG_H
 #define EVENTLOG_H
 
+#include <stdbool.h>
 #include "digest.h"
 #include "util.h"
 
@@ -87,8 +88,7 @@ enum {
 	GRUB_EVENT_COMMAND		     = 0x0001,
 	GRUB_EVENT_FILE			     = 0x0002,
 	GRUB_EVENT_KERNEL_CMDLINE	     = 0x0003,
-	SHIM_EVENT_MOKLIST		     = 0x0004,
-	SHIM_EVENT_MOKLIST_X		     = 0x0005,
+	SHIM_EVENT_VARIABLE		     = 0x0004,
 };
 
 #define EFI_DEVICE_PATH_MAX		16
@@ -225,6 +225,7 @@ typedef struct tpm_parsed_event {
 
 		struct shim_event {
 			char *		string;
+			const char *	efi_variable;
 		} shim_event;
 
 		struct efi_gpt_event {
@@ -268,5 +269,9 @@ extern const char *		__tpm_event_efi_device_path_item_file_path(const struct efi
 
 extern const char *		tpm_efi_variable_event_extract_full_varname(const tpm_parsed_event_t *parsed);
 extern const char *		tpm_event_decode_uuid(const unsigned char *data);
+
+extern bool			shim_variable_name_valid(const char *name);
+extern const char *		shim_variable_get_rtname(const char *name);
+extern const char *		shim_variable_get_full_rtname(const char *name);
 
 #endif /* EVENTLOG_H */

@@ -691,21 +691,17 @@ __tpm_event_shim_destroy(tpm_parsed_event_t *parsed)
 static const char *
 __tpm_event_shim_describe(const tpm_parsed_event_t *parsed)
 {
-	if (parsed->event_subtype == SHIM_EVENT_MOKLIST)
-		return "shim loader MokList event";
-	if (parsed->event_subtype == SHIM_EVENT_MOKLIST_X)
-		return "shim loader MokListX event";
-	return "shim event";
+	static char buffer[64];
+
+	snprintf(buffer, sizeof(buffer), "shim loader %s event", parsed->shim_event.string);
+	return buffer;
 }
 
 static const tpm_evdigest_t *
 __tpm_event_shim_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *parsed, tpm_event_log_rehash_ctx_t *ctx)
 {
-	if (parsed->event_subtype == SHIM_EVENT_MOKLIST)
-		return __tpm_event_rehash_efi_variable("MokListRT-605dab50-e046-4300-abb6-3dd810dd8b23", ctx);
-	if (parsed->event_subtype == SHIM_EVENT_MOKLIST_X)
-		return __tpm_event_rehash_efi_variable("MokListXRT-605dab50-e046-4300-abb6-3dd810dd8b23", ctx);
-
+	if (parsed->event_subtype == SHIM_EVENT_VARIABLE)
+		return __tpm_event_rehash_efi_variable(parsed->shim_event.efi_variable, ctx);
 	return NULL;
 }
 
@@ -718,12 +714,12 @@ static bool
 __tpm_event_shim_event_parse(tpm_event_t *ev, tpm_parsed_event_t *parsed, const char *value)
 {
 	struct shim_event *evspec = &parsed->shim_event;
+	const char *shim_rt_var;
 
-	if (!strcmp(value, "MokList")) {
-		parsed->event_subtype = SHIM_EVENT_MOKLIST;
-	} else
-	if (!strcmp(value, "MokListX")) {
-		parsed->event_subtype = SHIM_EVENT_MOKLIST_X;
+	shim_rt_var = shim_variable_get_full_rtname(value);
+	if (shim_rt_var != NULL) {
+		parsed->event_subtype = SHIM_EVENT_VARIABLE;
+		evspec->efi_variable = shim_rt_var;
 	} else {
 		error("Unknown shim IPL event %s\n", value);
 		return NULL;

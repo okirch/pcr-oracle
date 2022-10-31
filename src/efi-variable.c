@@ -118,11 +118,6 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 		return NULL;
 	}
 
-	if (!strcmp(var_name, "SbatLevel-605dab50-e046-4300-abb6-3dd810dd8b23")) {
-		debug("EFI variable %s is protected from kernel runtime; assuming it did not change\n", var_name);
-		return old_md;
-	}
-
 	/* UEFI implementations seem to differ in what they hash. Some Dell firmwares
 	 * always seem to hash the entire event. The OVMF firmware, on the other hand,
 	 * hashes the log for EFI_VARIABLE_DRIVER_CONFIG events, and just the data for
@@ -205,10 +200,20 @@ const char *
 tpm_efi_variable_event_extract_full_varname(const tpm_parsed_event_t *parsed)
 {
 	static char varname[256];
+	const struct efi_variable_event *evspec = &parsed->efi_variable_event;
+	const char *shim_rtname;
+
+	/* First, check if this is one of the variables used by the shim loader.
+	 * These are usually not accessible at runtime, but the shim loader
+	 * does provide copies of them that are.
+	 */
+	shim_rtname = shim_variable_get_full_rtname(evspec->variable_name);
+	if (shim_rtname != NULL)
+		return shim_rtname;
 
 	snprintf(varname, sizeof(varname), "%s-%s", 
-			parsed->efi_variable_event.variable_name,
-			tpm_event_decode_uuid(parsed->efi_variable_event.variable_guid));
+			evspec->variable_name,
+			tpm_event_decode_uuid(evspec->variable_guid));
 	return varname;
 }
 
