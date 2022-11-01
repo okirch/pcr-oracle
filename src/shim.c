@@ -19,6 +19,7 @@
  */
 
 #include <string.h>
+#include <stdio.h>
 #include "eventlog.h"
 
 #define SHIM_EFIVAR_GUUID	"605dab50-e046-4300-abb6-3dd810dd8b23"

@@ -21,9 +21,8 @@
 #ifndef EVENTLOG_H
 #define EVENTLOG_H
 
-#include <stdbool.h>
-#include "digest.h"
-#include "util.h"
+#include "types.h"
+// #include "util.h"
 
 typedef struct tpm_event {
 	struct tpm_event *	next;
@@ -177,7 +176,7 @@ typedef struct tpm_event_log_rehash_ctx {
 	bool			use_pesign;		/* compute authenticode FP using external pesign application */
 	char *			efi_partition;
 
-	struct buffer *		stage2_authenticode_signer;
+	buffer_t *		stage2_authenticode_signer;
 } tpm_event_log_rehash_ctx_t;
 
 #define GRUB_COMMAND_ARGV_MAX	32
@@ -191,7 +190,7 @@ typedef struct tpm_parsed_event {
 	const char *		(*describe)(const struct tpm_parsed_event *);
 	void			(*destroy)(struct tpm_parsed_event *);
 	void			(*print)(struct tpm_parsed_event *, tpm_event_bit_printer *);
-	struct buffer *		(*rebuild)(const struct tpm_parsed_event *, const void *raw_data, unsigned int raw_data_len);
+	buffer_t *		(*rebuild)(const struct tpm_parsed_event *, const void *raw_data, unsigned int raw_data_len);
 	const tpm_evdigest_t *	(*rehash)(const tpm_event_t *, const struct tpm_parsed_event *, tpm_event_log_rehash_ctx_t *);
 
 	union {
@@ -252,17 +251,15 @@ extern const tpm_evdigest_t *	tpm_event_get_digest(const tpm_event_t *ev, const 
 extern void			tpm_parsed_event_print(tpm_parsed_event_t *parsed,
 					tpm_event_bit_printer *);
 extern const char *		tpm_parsed_event_describe(tpm_parsed_event_t *parsed);
-extern struct buffer *		tpm_parsed_event_rebuild(tpm_parsed_event_t *, const void *, unsigned int);
+extern buffer_t *		tpm_parsed_event_rebuild(tpm_parsed_event_t *, const void *, unsigned int);
 extern const tpm_evdigest_t *	tpm_parsed_event_rehash(const tpm_event_t *, const tpm_parsed_event_t *,
 					tpm_event_log_rehash_ctx_t *);
 
-struct buffer; /* fwd decl */
-
 /* helper functions for parsing events */
-extern bool			__tpm_event_parse_efi_variable(tpm_event_t *, tpm_parsed_event_t *, struct buffer *);
-extern bool			__tpm_event_parse_efi_bsa(tpm_event_t *, tpm_parsed_event_t *, struct buffer *);
-extern bool			__tpm_event_parse_efi_gpt(tpm_event_t *, tpm_parsed_event_t *, struct buffer *);
-extern bool			__tpm_event_parse_efi_device_path(efi_device_path_t *, struct buffer *);
+extern bool			__tpm_event_parse_efi_variable(tpm_event_t *, tpm_parsed_event_t *, buffer_t *);
+extern bool			__tpm_event_parse_efi_bsa(tpm_event_t *, tpm_parsed_event_t *, buffer_t *);
+extern bool			__tpm_event_parse_efi_gpt(tpm_event_t *, tpm_parsed_event_t *, buffer_t *);
+extern bool			__tpm_event_parse_efi_device_path(efi_device_path_t *, buffer_t *);
 extern void			__tpm_event_efi_device_path_print(const efi_device_path_t *path,
 					tpm_event_bit_printer *print_fn);
 extern void			__tpm_event_efi_device_path_destroy(efi_device_path_t *path);
@@ -271,7 +268,7 @@ extern const char *		__tpm_event_efi_device_path_item_file_path(const struct efi
 
 extern const char *		tpm_efi_variable_event_extract_full_varname(const tpm_parsed_event_t *parsed);
 extern const char *		tpm_event_decode_uuid(const unsigned char *data);
-extern struct buffer *		efi_application_extract_signer(const char *device_path, const char *file_path);
+extern buffer_t *		efi_application_extract_signer(const char *device_path, const char *file_path);
 
 extern bool			shim_variable_name_valid(const char *name);
 extern const char *		shim_variable_get_rtname(const char *name);

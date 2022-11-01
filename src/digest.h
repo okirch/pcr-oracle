@@ -23,39 +23,35 @@
 #define DIGEST_H
 
 #include <openssl/evp.h>
-#include <stdbool.h>
+#include "types.h"
 
-struct buffer;
-
-typedef struct tpm_algo_info {
+struct tpm_algo_info {
 	unsigned int		tcg_id;
 	const char *		openssl_name;
 	unsigned int		digest_size;
-} tpm_algo_info_t;
+};
 
-typedef struct tpm_evdigest {
+struct tpm_evdigest {
 	const tpm_algo_info_t *	algo;
 	unsigned int		size;
 	unsigned char		data[EVP_MAX_MD_SIZE];
-} tpm_evdigest_t;
-
-typedef struct digest_ctx	digest_ctx_t;
+};
 
 #define WIN_CERT_TYPE_X509	0x0001
 #define WIN_CERT_TYPE_AUTH	0x0002
 
-typedef struct win_cert {
+struct win_cert {
 	int			type;
-	struct buffer *		blob;
-	struct buffer *		signer_cert;
-} win_cert_t;
+	buffer_t *		blob;
+	buffer_t *		signer_cert;
+};
 
 #define MAX_CERTIFICATES	8
 
-typedef struct cert_table {
+struct cert_table {
 	unsigned int		count;
 	win_cert_t *		cert[MAX_CERTIFICATES];
-} cert_table_t;
+};
 
 extern const tpm_algo_info_t *	digest_by_tpm_alg(unsigned int algo_id);
 extern const tpm_algo_info_t *	digest_by_name(const char *name);
@@ -70,12 +66,13 @@ extern digest_ctx_t *		digest_ctx_new(const tpm_algo_info_t *);
 extern void			digest_ctx_update(digest_ctx_t *, const void *, unsigned int);
 extern tpm_evdigest_t *		digest_ctx_final(digest_ctx_t *, tpm_evdigest_t *);
 extern void			digest_ctx_free(digest_ctx_t *);
-extern const tpm_evdigest_t *	digest_buffer(const tpm_algo_info_t *, struct buffer *);
+extern const tpm_evdigest_t *	digest_buffer(const tpm_algo_info_t *, buffer_t *);
 extern const tpm_evdigest_t *	digest_compute(const tpm_algo_info_t *, const void *, unsigned int);
 extern const tpm_evdigest_t *	digest_from_file(const tpm_algo_info_t *algo_info, const char *filename, int flags);
 
 extern const tpm_algo_info_t *	__digest_by_tpm_alg(unsigned int, const tpm_algo_info_t *, unsigned int);
 
-extern struct buffer *		pkcs7_extract_signer(struct buffer *);
+extern void			cert_table_free(cert_table_t *);
+extern buffer_t *		pkcs7_extract_signer(buffer_t *);
 
 #endif /* DIGEST_H */

@@ -22,14 +22,15 @@
 #define BUFPARSER_H
 
 #include <string.h>
+#include "types.h"
 #include "util.h"
 
-typedef struct buffer {
+struct buffer {
 	unsigned int		rpos;
 	unsigned int		wpos;
 	unsigned int		size;
 	unsigned char *		data;
-} buffer_t;
+};
 
 static inline void
 buffer_init_read(buffer_t *bp, void *data, unsigned int len)

@@ -24,14 +24,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
-#include <stdint.h>
-#include <ctype.h>
-#include <limits.h>
 #include <assert.h>
 
-#include "util.h"
+#include "digest.h"
 #include "eventlog.h"
 #include "runtime.h"
+#include "bufparser.h"
+#include "util.h"
 
 enum {
 	__TPM2_ALG_sha1 = 4,

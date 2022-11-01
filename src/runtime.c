@@ -22,9 +22,14 @@
 #include <sys/mount.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <string.h>
+#include <limits.h>
 #include <errno.h>
 #include <ctype.h>
+
 #include "runtime.h"
+#include "bufparser.h"
+#include "util.h"
 
 struct file_locator {
 	char *		partition;

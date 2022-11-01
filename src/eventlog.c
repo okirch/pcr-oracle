@@ -18,23 +18,19 @@
  * Written by Olaf Kirch <okir@suse.com>
  */
 
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
-#include <stdarg.h>
-#include <stdint.h>
 #include <ctype.h>
-#include <iconv.h>
-#include <limits.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <tss2/tss2_tpm2_types.h>
 
 #include "eventlog.h"
 #include "bufparser.h"
 #include "runtime.h"
+#include "digest.h"
 #include "util.h"
 
 #define TPM_EVENT_LOG_MAX_ALGOS		64

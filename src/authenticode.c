@@ -32,7 +32,9 @@
 #include <stdint.h>
 
 #include "oracle.h"
+#include "authenticode.h"
 #include "bufparser.h"
+#include "digest.h"
 #include "runtime.h"
 
 #if 1

@@ -33,6 +33,7 @@
 #include "eventlog.h"
 #include "bufparser.h"
 #include "runtime.h"
+#include "digest.h"
 
 enum {
 	STOP_EVENT_NONE,

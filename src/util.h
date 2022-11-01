@@ -23,9 +23,9 @@
 
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdbool.h>
+#include <stdlib.h>
 
-#include "digest.h"
+#include "types.h"
 
 extern unsigned int	opt_debug;
 

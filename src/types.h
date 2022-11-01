@@ -18,12 +18,20 @@
  * Written by Olaf Kirch <okir@suse.com>
  */
 
-#ifndef PCR_ORACLE_H
-#define PCR_ORACLE_H
+#ifndef TYPES_H
+#define TYPES_H
 
-#include "types.h"
+#include <stdbool.h>
+#include <stdint.h>
 
-extern bool		ima_is_active(void);
+typedef struct buffer		buffer_t;
+typedef struct tpm_evdigest	tpm_evdigest_t;
+typedef struct tpm_algo_info	tpm_algo_info_t;
+typedef struct digest_ctx	digest_ctx_t;
+typedef struct win_cert		win_cert_t;
+typedef struct cert_table	cert_table_t;
 
-#endif /* PCR_ORACLE_H */
+
+#endif /* TYPES_H */
+
 

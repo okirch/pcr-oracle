@@ -19,8 +19,8 @@
  */
 
 #include <string.h>
+#include <limits.h>
 
-#include <tss2/tss2_tpm2_types.h>
 
 #include "eventlog.h"
 #include "bufparser.h"

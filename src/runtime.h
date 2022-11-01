@@ -21,8 +21,7 @@
 #ifndef RUNTIME_H
 #define RUNTIME_H
 
-
-#include "bufparser.h"
+#include "types.h"
 
 #define RUNTIME_SHORT_READ_OKAY		0x0001
 #define RUNTIME_MISSING_FILE_OKAY	0x0002
