@@ -41,6 +41,22 @@ typedef struct tpm_evdigest {
 
 typedef struct digest_ctx	digest_ctx_t;
 
+#define WIN_CERT_TYPE_X509	0x0001
+#define WIN_CERT_TYPE_AUTH	0x0002
+
+typedef struct win_cert {
+	int			type;
+	struct buffer *		blob;
+	struct buffer *		signer_cert;
+} win_cert_t;
+
+#define MAX_CERTIFICATES	8
+
+typedef struct cert_table {
+	unsigned int		count;
+	win_cert_t *		cert[MAX_CERTIFICATES];
+} cert_table_t;
+
 extern const tpm_algo_info_t *	digest_by_tpm_alg(unsigned int algo_id);
 extern const tpm_algo_info_t *	digest_by_name(const char *name);
 extern const char *		digest_print(const tpm_evdigest_t *);
@@ -59,5 +75,7 @@ extern const tpm_evdigest_t *	digest_compute(const tpm_algo_info_t *, const void
 extern const tpm_evdigest_t *	digest_from_file(const tpm_algo_info_t *algo_info, const char *filename, int flags);
 
 extern const tpm_algo_info_t *	__digest_by_tpm_alg(unsigned int, const tpm_algo_info_t *, unsigned int);
+
+extern struct buffer *		pkcs7_extract_signer(struct buffer *);
 
 #endif /* DIGEST_H */

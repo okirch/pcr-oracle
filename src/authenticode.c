@@ -511,6 +511,126 @@ __pecoff_show_optional_header(pecoff_image_info_t *img)
 	}
 }
 
+/*
+ * Process the certificate table.
+ * This code isn't used yet, and may go away again at some point.
+ * The cert table contains one or more authenticode signatures, which is a PKCS7
+ * signed blob of data. That blob is the asn1 encoded finger print of the binary.
+ */
+win_cert_t *
+win_cert_alloc(int type, buffer_t *blob)
+{
+	win_cert_t *cert;
+
+	cert = calloc(1, sizeof(*cert));
+	cert->type = type;
+	cert->blob = blob;
+
+	return cert;
+}
+
+static buffer_t *
+win_cert_get_signer(win_cert_t *cert)
+{
+	if (cert->type != WIN_CERT_TYPE_AUTH) {
+		debug("Can't extract signer's certificate from a type %d cert\n", cert->type);
+		return NULL;
+	}
+
+	debug("Trying to extract signer's certificate from Authenticode cert\n");
+	return pkcs7_extract_signer(cert->blob);
+}
+
+void
+win_cert_free(win_cert_t *cert)
+{
+	buffer_free(cert->blob);
+	if (cert->signer_cert)
+		buffer_free(cert->signer_cert);
+}
+
+cert_table_t *
+cert_table_alloc(void)
+{
+	cert_table_t *result;
+
+	result = calloc(1, sizeof(*result));
+	return result;
+}
+
+void
+cert_table_free(cert_table_t *cert_tbl)
+{
+	unsigned int i;
+
+	for (i = 0; i < cert_tbl->count; ++i)
+		win_cert_free(cert_tbl->cert[i]);
+
+	cert_tbl->count = 0;
+	free(cert_tbl);
+}
+
+static bool
+__pecoff_process_certificate_table(buffer_t *in, pecoff_image_info_t *img, cert_table_t *cert_tbl)
+{
+	buffer_t cert_tbl_data;
+
+	/* Set up the buffer to provide access to the certificate table but not beyond */
+	if (!buffer_seek_read(in, img->data_dirs[PECOFF_DATA_DIRECTORY_CERTTBL_INDEX].addr)
+	 || !buffer_get_buffer(in, img->data_dirs[PECOFF_DATA_DIRECTORY_CERTTBL_INDEX].size, &cert_tbl_data))
+		return false;
+
+	/* sections are padded out to multiples of 8, so9 the buffer may contain padding at the end */
+	while (buffer_available(&cert_tbl_data) > 8) {
+		uint32_t entry_size, blob_size;
+		uint16_t cert_revision, cert_type;
+		buffer_t *blob;
+		unsigned int index;
+
+		if (!buffer_get_u32le(&cert_tbl_data, &entry_size)
+		 || !buffer_get_u16le(&cert_tbl_data, &cert_revision)
+		 || !buffer_get_u16le(&cert_tbl_data, &cert_type)) {
+			error("Cannot process certificate table; short buffer\n");
+			return false;
+		}
+
+		if (cert_revision != 0x200) {
+			error("Cannot process certificate table; unsupported certificate format rev %u.%u\n",
+					cert_revision >> 8,
+					cert_revision & 0xff);
+			return false;
+		}
+
+		pe_debug("Certificate %u is a type %u certificate\n", cert_tbl->count, cert_type);
+		if (cert_type != WIN_CERT_TYPE_X509 &&
+		    cert_type != WIN_CERT_TYPE_AUTH) {
+			error("Cannot process certificate table; unsupported certificate type %u\n", cert_type);
+			return false;
+		}
+
+		if (cert_tbl->count >= MAX_CERTIFICATES) {
+			error("Cannot process certificate table; too many cert blobs\n");
+			return false;
+		}
+		index = cert_tbl->count++;
+
+		/* The entry size covers the 8 bytes of decoration we parsed above */
+		blob_size = entry_size - 8;
+
+		blob = buffer_alloc_write(blob_size);
+		if (!buffer_copy(&cert_tbl_data, blob_size, blob)) {
+			error("Cannot process certificate table; no enough data for blob\n");
+			buffer_free(blob);
+			return false;
+		}
+
+		cert_tbl->cert[index] = win_cert_alloc(cert_type, blob);
+	}
+
+	debug("%s: returning %u cert blobs\n", __func__, cert_tbl->count);
+	return true;
+}
+
 static bool
 __pecoff_get_authenticode_ranges(buffer_t *in, authenticode_image_info_t *auth_info)
 {
@@ -560,4 +680,30 @@ authenticode_get_digest(buffer_t *raw_data, digest_ctx_t *digest)
 	if (__pecoff_get_authenticode_ranges(raw_data, &auth_info))
 		md = authenticode_compute(&auth_info, raw_data, digest);
 	return md;
+}
+
+cert_table_t *
+authenticode_get_certificate_table(buffer_t *in)
+{
+	pecoff_image_info_t img_info;
+	authenticode_image_info_t auth_info;
+	cert_table_t *result = NULL;
+
+	memset(&auth_info, 0, sizeof(auth_info));
+	memset(&img_info, 0, sizeof(img_info));
+	img_info.auth_info = &auth_info;
+
+	if (!__pecoff_process_header(in, &img_info)
+	 || !__pecoff_process_optional_header(in, &img_info)) {
+		error("PECOFF: error processing image header\n");
+		return NULL;
+	}
+
+	result = cert_table_alloc();
+	if (!__pecoff_process_certificate_table(in, &img_info, result)) {
+		cert_table_free(result);
+		return NULL;
+	}
+
+	return result;
 }

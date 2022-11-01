@@ -264,3 +264,73 @@ digest_ctx_free(digest_ctx_t *ctx)
 
 	free(ctx);
 }
+
+/*
+ * PKCS7 stuff. Needed to handle Authenticode code signing certs
+ */
+#include <openssl/pkcs7.h>
+#include <openssl/x509.h>
+
+static buffer_t *
+x509_as_buffer(X509 *x509)
+{
+	unsigned char *der = NULL;
+	int len;
+	buffer_t *bp;
+
+	len = i2d_X509(x509, &der);
+	if (len < 0)
+		return NULL;
+
+	bp = buffer_alloc_write(len);
+	buffer_put(bp, der, len);
+	free(der);
+
+	return bp;
+}
+
+buffer_t *
+pkcs7_extract_signer(buffer_t *data)
+{
+	const unsigned char *raw_data;
+	unsigned int raw_len;
+	PKCS7 *p7 = NULL;
+	STACK_OF(X509) *chain;
+	X509 *x509;
+	buffer_t *bp = NULL;
+
+	raw_data = buffer_read_pointer(data);
+	raw_len = buffer_available(data);
+
+	if (!d2i_PKCS7(&p7, &raw_data, raw_len)) {
+		debug("%s: cannot parse blob as PKCS#7\n", __func__);
+		return NULL;
+	}
+
+	if (!PKCS7_type_is_signed(p7)) {
+		debug("%s: blob is a PKCS#7 object, but not a signed thingy\n", __func__);
+		goto out;
+	}
+
+	chain = p7->d.sign->cert;
+
+	/* empty signing chain */
+	if (sk_X509_num(chain) == 0) {
+		debug("%s: signing chain contains %d certificates\n", __func__, sk_X509_num(chain));
+		goto out;
+	}
+
+	if (!(x509 = sk_X509_value(chain, 0))) {
+		debug("%s: couldn't get cert 0 from chain\n", __func__);
+		goto out;
+	}
+
+	debug("Extracted an X.509 certificate. Yay!\n");
+	if (!(bp = x509_as_buffer(x509)))
+		error("Failed to DER encode X.509 certificate\n");
+
+out:
+	if (p7)
+		PKCS7_free(p7);
+	return bp;
+}
