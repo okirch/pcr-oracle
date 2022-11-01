@@ -18,6 +18,8 @@
  * Written by Olaf Kirch <okir@suse.com>
  */
 
+#define _GNU_SOURCE
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -140,6 +142,18 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 	file_data = runtime_read_efi_variable(var_name);
 	if (file_data == NULL)
 		return NULL;
+
+	if (ev->event_type == TPM2_EFI_VARIABLE_AUTHORITY &&
+	    (!strcmp(var_name, "db-d719b2cb-3d3a-4596-a3bc-dad00e67656f") ||
+	     !strcmp(var_name, "MokListRT-605dab50-e046-4300-abb6-3dd810dd8b23"))) {
+		debug("Match variable data in %s\n", var_name);
+		if (memmem(file_data->data, file_data->size,
+			   parsed->efi_variable_event.data, parsed->efi_variable_event.len) == NULL) {
+			fatal("Variable data not from %s\n", var_name);
+		}
+
+		return md;
+	}
 
 	if (hash_strategy == HASH_STRATEGY_EVENT) {
 		event_data = __tpm_event_efi_variable_build_event(parsed,
