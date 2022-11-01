@@ -46,7 +46,7 @@ In order to predict the PCR values for this scenario, you would
 invoke pcr-oracle like this:
 
     pcr-oracle --from eventlog 0,2,4,7,9 \
-        --before --stop--event grub-command=tpm2_key_protector_init \
+        --before --stop-event grub-command=tpm2_key_protector_init \
         --format binary >pcr.state
 
 This will stop processing the TPM event log right before the
