@@ -267,7 +267,7 @@ __convert_from_utf16le(char *in_string, size_t in_bytes, char *out_string, size_
 		converted = iconv(ctx,
 				&in_string, &in_bytes,
 				&out_string, &out_bytes);
-		if (converted < 0) {
+		if (converted == (size_t) -1) {
 			perror("iconv");
 			return false;
 		}
@@ -290,7 +290,7 @@ __convert_to_utf16le(char *in_string, size_t in_bytes, char *out_string, size_t 
 		converted = iconv(ctx,
 				&in_string, &in_bytes,
 				&out_string, &out_bytes);
-		if (converted < 0) {
+		if (converted == (size_t) -1) {
 			perror("iconv");
 			return false;
 		}

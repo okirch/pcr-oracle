@@ -153,6 +153,7 @@ __pecoff_rehash_old(tpm_event_log_rehash_ctx_t *ctx, const char *filename)
 	char cmdbuf[8192], linebuf[1024];
 	const tpm_evdigest_t *md = NULL;
 	FILE *fp;
+	int exitcode;
 
 	snprintf(cmdbuf, sizeof(cmdbuf),
 			"pesign --hash --in %s --digest_type %s",
@@ -179,8 +180,13 @@ __pecoff_rehash_old(tpm_event_log_rehash_ctx_t *ctx, const char *filename)
 		break;
 	}
 
-	if (fclose(fp) != 0)
-		fatal("pesign command failed: %m\n");
+	exitcode = pclose(fp);
+	if (exitcode == -1)
+		fatal("pclose failed: %m\n");
+	else if (!WIFEXITED(exitcode))
+		fatal("pesign command failed\n");
+	else if (WEXITSTATUS(exitcode) != 0)
+		fatal("pesign command failed with %d\n", WEXITSTATUS(exitcode));
 
 	return md;
 }
