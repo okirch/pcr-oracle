@@ -105,7 +105,9 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 {
 	const tpm_algo_info_t *algo = ctx->algo;
 	const char *var_name;
-	buffer_t *file_data, *event_data = NULL, *data_to_hash = NULL;
+	unsigned int num_buffers_to_free = 0;
+	buffer_t *buffers_to_free[4];
+	buffer_t *file_data = NULL, *event_data = NULL, *data_to_hash = NULL;
 	const tpm_evdigest_t *md, *old_md;
 	int hash_strategy;
 
@@ -137,9 +139,21 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 		}
 	}
 
-	file_data = runtime_read_efi_variable(var_name);
-	if (file_data == NULL)
-		return NULL;
+	if (!strcmp(parsed->efi_variable_event.variable_name, "Shim")) {
+		if (ctx->stage2_authenticode_signer == NULL) {
+			error("Sorry, I was not able to extract the cert of 2nd stage boot loader\n");
+			goto out;
+		}
+
+		file_data = ctx->stage2_authenticode_signer;
+	} else {
+		file_data = runtime_read_efi_variable(var_name);
+		if (file_data == NULL)
+			goto out;
+
+		buffers_to_free[num_buffers_to_free++] = file_data;
+	}
+
 
 	if (hash_strategy == HASH_STRATEGY_EVENT) {
 		event_data = __tpm_event_efi_variable_build_event(parsed,
@@ -155,6 +169,7 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 				debug, 8);
 		 }
 
+		buffers_to_free[num_buffers_to_free++] = event_data;
 		data_to_hash = event_data;
 	} else {
 		data_to_hash = file_data;
@@ -164,9 +179,9 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 			buffer_read_pointer(data_to_hash),
 			buffer_available(data_to_hash));
 
-	buffer_free(file_data);
-	if (event_data)
-		buffer_free(event_data);
+out:
+	while (num_buffers_to_free)
+		buffer_free(buffers_to_free[--num_buffers_to_free]);
 	return md;
 }
 
