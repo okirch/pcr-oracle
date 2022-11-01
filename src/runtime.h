@@ -27,6 +27,11 @@
 #define RUNTIME_SHORT_READ_OKAY		0x0001
 #define RUNTIME_MISSING_FILE_OKAY	0x0002
 
+typedef struct file_locator	file_locator_t;
+
+extern file_locator_t *	runtime_locate_file(const char *fs_dev, const char *path);
+extern void		file_locator_free(file_locator_t *);
+extern const char *	file_locator_get_full_path(const file_locator_t *);
 extern buffer_t *	runtime_read_file(const char *pathname, int flags);
 extern buffer_t *	runtime_read_efi_variable(const char *var_name);
 extern char *		runtime_disk_for_partition(const char *part_dev);

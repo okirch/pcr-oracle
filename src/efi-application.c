@@ -19,7 +19,6 @@
  */
 
 #include <fcntl.h>
-#include <sys/mount.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -211,33 +210,21 @@ static const tpm_evdigest_t *
 __efi_application_rehash(tpm_event_log_rehash_ctx_t *ctx, const char *device_path, const char *file_path)
 {
 	const tpm_evdigest_t *md;
-	char display_path[PATH_MAX];
-	char fullpath[PATH_MAX];
-	char template[] = "/tmp/efimnt.XXXXXX";
-	char *dirname;
+	file_locator_t *loc;
+	const char *fullpath;
 
-	snprintf(display_path, sizeof(display_path), "(%s)%s", device_path, file_path);
+	loc = runtime_locate_file(device_path, file_path);
+	if (!loc)
+		fatal("Failed to locate EFI application (%s)%s", device_path, file_path);
 
-	if (!(dirname = mkdtemp(template)))
-		fatal("Cannot create temporary mount point for EFI partition");
-
-	if (mount(device_path, dirname, "vfat", 0, NULL) < 0) {
-		(void) rmdir(dirname);
-		fatal("Unable to mount %s on %s\n", device_path, dirname);
-	}
-
-	snprintf(fullpath, sizeof(fullpath), "%s/%s", dirname, file_path);
+	fullpath = file_locator_get_full_path(loc);
 	if (ctx->use_pesign) {
 		md = __pecoff_rehash_old(ctx, fullpath);
 	} else {
 		md = __pecoff_rehash_new(ctx, fullpath);
 	}
 
-	if (umount(dirname) < 0)
-		fatal("unable to unmount temporary directory %s: %m\n", dirname);
-
-	if (rmdir(dirname) < 0)
-		fatal("unable to remove temporary directory %s: %m\n", dirname);
+	file_locator_free(loc);
 
 	return md;
 }

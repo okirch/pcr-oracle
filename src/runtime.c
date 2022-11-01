@@ -19,11 +19,83 @@
  */
 
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
 #include "runtime.h"
+
+struct file_locator {
+	char *		partition;
+	char *		relative_path;
+
+	char *		mount_point;
+	bool		is_mounted;
+
+	char *		full_path;
+};
+
+file_locator_t *
+runtime_locate_file(const char *device_path, const char *file_path)
+{
+	char template[] = "/tmp/efimnt.XXXXXX";
+	char fullpath[PATH_MAX];
+	file_locator_t *loc;
+	char *dirname;
+
+	loc = calloc(1, sizeof(*loc));
+	assign_string(&loc->partition, device_path);
+	assign_string(&loc->relative_path, file_path);
+
+	if (!(dirname = mkdtemp(template)))
+		fatal("Cannot create temporary mount point for EFI partition");
+
+	if (mount(device_path, dirname, "vfat", 0, NULL) < 0) {
+		(void) rmdir(dirname);
+		fatal("Unable to mount %s on %s\n", device_path, dirname);
+	}
+
+	assign_string(&loc->mount_point, dirname);
+
+	snprintf(fullpath, sizeof(fullpath), "%s/%s", dirname, file_path);
+	assign_string(&loc->full_path, fullpath);
+
+	return loc;
+}
+
+void
+file_locator_unmount(file_locator_t *loc)
+{
+	if (!loc->is_mounted)
+		return;
+
+	if (umount(loc->mount_point) < 0)
+		fatal("unable to unmount temporary directory %s: %m\n", loc->mount_point);
+
+	if (rmdir(loc->mount_point) < 0)
+		fatal("unable to remove temporary directory %s: %m\n", loc->mount_point);
+
+	drop_string(&loc->mount_point);
+	drop_string(&loc->full_path);
+	loc->is_mounted = false;
+}
+
+void
+file_locator_free(file_locator_t *loc)
+{
+	file_locator_unmount(loc);
+
+	drop_string(&loc->partition);
+	drop_string(&loc->relative_path);
+	drop_string(&loc->full_path);
+}
+
+const char *
+file_locator_get_full_path(const file_locator_t *loc)
+{
+	return loc->full_path;
+}
 
 static buffer_t *
 __system_read_file(const char *filename, int flags)
