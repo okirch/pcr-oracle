@@ -229,6 +229,22 @@ __efi_application_rehash(tpm_event_log_rehash_ctx_t *ctx, const char *device_pat
 	return md;
 }
 
+buffer_t *
+efi_application_extract_signer(const char *device_path, const char *file_path)
+{
+	buffer_t *result = NULL;
+	file_locator_t *loc;
+
+	loc = runtime_locate_file(device_path, file_path);
+	if (!loc)
+		fatal("Failed to locate EFI application (%s)%s", device_path, file_path);
+
+	result = authenticode_get_signer(file_locator_get_full_path(loc));
+	file_locator_free(loc);
+
+	return result;
+}
+
 static const tpm_evdigest_t *
 __tpm_event_efi_bsa_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *parsed, tpm_event_log_rehash_ctx_t *ctx)
 {

@@ -26,6 +26,8 @@
 
 extern tpm_evdigest_t *	authenticode_get_digest(buffer_t *, digest_ctx_t *);
 extern cert_table_t *	authenticode_get_certificate_table(buffer_t *in);
+extern buffer_t *	authenticode_get_signer(const char *);
+extern buffer_t *	authenticode_get_signer_from_buffer(buffer_t *);
 extern void		cert_table_free(cert_table_t *);
 extern bool		ima_is_active(void);
 

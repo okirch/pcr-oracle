@@ -33,6 +33,7 @@
 
 #include "oracle.h"
 #include "bufparser.h"
+#include "runtime.h"
 
 #if 1
 # define pe_debug(args ...) \
@@ -707,3 +708,43 @@ authenticode_get_certificate_table(buffer_t *in)
 
 	return result;
 }
+
+buffer_t *
+authenticode_get_signer_from_buffer(buffer_t *in)
+{
+	cert_table_t *cert_tbl;
+	unsigned int i;
+	buffer_t *signer;
+
+	cert_tbl = authenticode_get_certificate_table(in);
+	if (cert_tbl == NULL) {
+		error("failed to read certificate table\n");
+		return NULL;
+	}
+
+	for (i = 0; i < cert_tbl->count; ++i) {
+		win_cert_t *cert = cert_tbl->cert[i];
+
+		signer = win_cert_get_signer(cert);
+		if (signer != NULL)
+			return signer;
+	}
+
+	error("unable to find a valid signer cert in certificate table\n");
+	return NULL;
+}
+
+buffer_t *
+authenticode_get_signer(const char *filename)
+{
+	buffer_t *buffer, *cert = NULL;
+
+	debug("Extracting Authenticode signer using built-in PECOFF parser\n");
+	if ((buffer = runtime_read_file(filename, 0)) != NULL) {
+		cert = authenticode_get_signer_from_buffer(buffer);
+		buffer_free(buffer);
+	}
+
+	return cert;
+}
+

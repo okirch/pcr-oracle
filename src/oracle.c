@@ -599,7 +599,12 @@ __check_stop_event(tpm_event_t *ev, int type, const char *value)
 }
 
 /*
- * Scan ahead to the next event of the indicated type.
+ * Scan ahead to a future event that will help us understand the current one.
+ */
+
+/*
+ * Lookahead: when processing the GPT event, we need to know which hard disk
+ * we're talking about.
  */
 static void
 __predictor_lookahead_efi_partition(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *ctx)
@@ -613,6 +618,48 @@ __predictor_lookahead_efi_partition(tpm_event_t *ev, tpm_event_log_rehash_ctx_t 
 			continue;
 
 		assign_string(&ctx->efi_partition, parsed->efi_bsa_event.efi_partition);
+		return;
+	}
+}
+
+/*
+ * Lookahead: when processing the BSA event that loads the shim loader, scan ahead
+ * to the next BSA event (which is probably grub getting loaded).
+ * We need this in order to process the "Shim" pseudo variable event that the
+ * shim loader produces when verifying the authenticode signature.
+ */
+static void
+__predictor_lookahead_shim_loaded(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *ctx)
+{
+	const char *shim_partition = NULL;
+	tpm_parsed_event_t *parsed;
+
+	if (ctx->stage2_authenticode_signer)
+		return;
+
+	if (!(parsed = tpm_event_parse(ev)))
+		return;
+	shim_partition = parsed->efi_bsa_event.efi_partition;
+
+	while ((ev = ev->next) != NULL) {
+		const char *efi_partition;
+
+		if (ev->event_type != TPM2_EFI_BOOT_SERVICES_APPLICATION)
+			continue;
+		if (!(parsed = tpm_event_parse(ev)))
+			continue;
+
+		if (!(efi_partition = parsed->efi_bsa_event.efi_partition))
+			efi_partition = shim_partition;
+
+		if (efi_partition == NULL)
+			return;
+
+		debug("Trying to extract code signing certificate from %s(%s)\n",
+				efi_partition,
+				parsed->efi_bsa_event.efi_application);
+		ctx->stage2_authenticode_signer = efi_application_extract_signer(efi_partition,
+				parsed->efi_bsa_event.efi_application);
 		return;
 	}
 }
@@ -668,6 +715,13 @@ predictor_update_eventlog(struct predictor *pred)
 			 */
 			if (ev->event_type == TPM2_EFI_GPT_EVENT && rehash_ctx.efi_partition == NULL)
 				__predictor_lookahead_efi_partition(ev, &rehash_ctx);
+
+			/* The shim loader emits an event that tells us which certificate it
+			 * used to verify the second stage loader. We try to predict that
+			 * by checking the second stage loader's authenticode sig.
+			 */
+			if (ev->event_type == TPM2_EFI_BOOT_SERVICES_APPLICATION)
+				__predictor_lookahead_shim_loaded(ev, &rehash_ctx);
 
 			switch (ev->event_type) {
 			case TPM2_EFI_BOOT_SERVICES_APPLICATION:
