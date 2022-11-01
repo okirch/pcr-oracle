@@ -295,5 +295,17 @@ buffer_put_size(buffer_t *bp, size_t value)
 	return true;
 }
 
+static inline bool
+buffer_copy(buffer_t *src, unsigned int count, buffer_t *dst)
+{
+	if (buffer_tailroom(dst) < count)
+		return false;
+
+	if (!buffer_get(src, buffer_write_pointer(dst), count))
+		return false;
+
+	dst->wpos += count;
+	return true;
+}
 
 #endif /* BUFPARSER_H */
