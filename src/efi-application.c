@@ -83,6 +83,7 @@ __tpm_event_efi_bsa_describe(const tpm_parsed_event_t *parsed)
 bool
 __tpm_event_parse_efi_bsa(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t *bp)
 {
+	struct efi_bsa_event *evspec = &parsed->efi_bsa_event;
 	size_t device_path_len;
 	buffer_t path_buf;
 
@@ -91,14 +92,14 @@ __tpm_event_parse_efi_bsa(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t 
 	parsed->describe = __tpm_event_efi_bsa_describe;
 	parsed->rehash = __tpm_event_efi_bsa_rehash;
 
-	if (!buffer_get_u64le(bp, &parsed->efi_bsa_event.image_location)
-	 || !buffer_get_size(bp, &parsed->efi_bsa_event.image_length)
-	 || !buffer_get_size(bp, &parsed->efi_bsa_event.image_lt_address)
+	if (!buffer_get_u64le(bp, &evspec->image_location)
+	 || !buffer_get_size(bp, &evspec->image_length)
+	 || !buffer_get_size(bp, &evspec->image_lt_address)
 	 || !buffer_get_size(bp, &device_path_len)
 	 || !buffer_get_buffer(bp, device_path_len, &path_buf))
 		return false;
 
-	if (!__tpm_event_parse_efi_device_path(&parsed->efi_bsa_event.device_path, &path_buf))
+	if (!__tpm_event_parse_efi_device_path(&evspec->device_path, &path_buf))
 		return false;
 
 	__tpm_event_efi_bsa_extract_location(parsed);
