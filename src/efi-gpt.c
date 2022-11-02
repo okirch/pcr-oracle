@@ -161,18 +161,19 @@ failed:
 static const tpm_evdigest_t *
 __tpm_event_efi_gpt_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *parsed, tpm_event_log_rehash_ctx_t *ctx)
 {
+	const struct efi_gpt_event *evspec = &parsed->efi_gpt_event;
 	const tpm_evdigest_t *md = NULL;
 	buffer_t *buffer = NULL;
 	char *device;
 
-	if (ctx->efi_partition == NULL) {
+	if (evspec->efi_partition == NULL) {
 		error("Cannot determine EFI partition from event log\n");
 		/* FIXME: just use the device that holds /boot/efi? */
 		return NULL;
 	}
 
-	if (!(device = runtime_disk_for_partition(ctx->efi_partition))) {
-		error("Unable to determine disk for partition %s\n", ctx->efi_partition);
+	if (!(device = runtime_disk_for_partition(evspec->efi_partition))) {
+		error("Unable to determine disk for partition %s\n", evspec->efi_partition);
 		return NULL;
 	}
 

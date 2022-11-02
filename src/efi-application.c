@@ -257,9 +257,6 @@ __tpm_event_efi_bsa_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *pars
 {
 	const struct efi_bsa_event *evspec = &parsed->efi_bsa_event;
 
-	if (evspec->efi_partition)
-		assign_string(&ctx->efi_partition, evspec->efi_partition);
-
 	/* Some BSA events do not refer to files, but to some data blobs residing somewhere on a device.
 	 * We're not yet prepared to handle these, so we hope the user doesn't mess with them, and
 	 * return the original digest from the event log.
@@ -269,5 +266,5 @@ __tpm_event_efi_bsa_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *pars
 		return tpm_event_get_digest(ev, ctx->algo->openssl_name);
 	}
 
-	return __efi_application_rehash(ctx, ctx->efi_partition, evspec->efi_application);
+	return __efi_application_rehash(ctx, evspec->efi_partition, evspec->efi_application);
 }

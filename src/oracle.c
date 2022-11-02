@@ -610,6 +610,8 @@ __check_stop_event(tpm_event_t *ev, int type, const char *value, tpm_event_log_s
 static void
 __predictor_lookahead_efi_partition(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *ctx)
 {
+	struct efi_gpt_event *gpt = &ev->__parsed->efi_gpt_event;
+
 	while ((ev = ev->next) != NULL) {
 		tpm_parsed_event_t *parsed;
 
@@ -620,7 +622,7 @@ __predictor_lookahead_efi_partition(tpm_event_t *ev, tpm_event_log_rehash_ctx_t 
 		if (!(parsed = ev->__parsed))
 			continue;
 
-		assign_string(&ctx->efi_partition, parsed->efi_bsa_event.efi_partition);
+		assign_string(&gpt->efi_partition, parsed->efi_bsa_event.efi_partition);
 		return;
 	}
 }
@@ -810,7 +812,7 @@ predictor_update_eventlog(struct predictor *pred)
 			 * from.
 			 * Scan ahead to the first BSA event to extract the EFI partition.
 			 */
-			if (ev->event_type == TPM2_EFI_GPT_EVENT && rehash_ctx.efi_partition == NULL)
+			if (ev->event_type == TPM2_EFI_GPT_EVENT)
 				__predictor_lookahead_efi_partition(ev, &rehash_ctx);
 
 			/* The shim loader emits an event that tells us which certificate it

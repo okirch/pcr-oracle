@@ -190,7 +190,6 @@ typedef struct tpm_event_log_scan_ctx {
 typedef struct tpm_event_log_rehash_ctx {
 	const tpm_algo_info_t *	algo;
 	bool			use_pesign;		/* compute authenticode FP using external pesign application */
-	char *			efi_partition;
 
 	buffer_t *		stage2_authenticode_signer;
 } tpm_event_log_rehash_ctx_t;
@@ -246,6 +245,7 @@ typedef struct tpm_parsed_event {
 		} shim_event;
 
 		struct efi_gpt_event {
+			char *		efi_partition;
 			char *		disk_device;
 		} efi_gpt_event;
 	};
