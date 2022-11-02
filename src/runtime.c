@@ -53,12 +53,15 @@ runtime_locate_file(const char *device_path, const char *file_path)
 	assign_string(&loc->partition, device_path);
 	assign_string(&loc->relative_path, file_path);
 
-	if (!(dirname = mkdtemp(template)))
-		fatal("Cannot create temporary mount point for EFI partition");
+	if (!(dirname = mkdtemp(template))) {
+		error("Cannot create temporary mount point for EFI partition");
+		return NULL;
+	}
 
 	if (mount(device_path, dirname, "vfat", 0, NULL) < 0) {
 		(void) rmdir(dirname);
-		fatal("Unable to mount %s on %s\n", device_path, dirname);
+		error("Unable to mount %s on %s\n", device_path, dirname);
+		return NULL;
 	}
 
 	assign_string(&loc->mount_point, dirname);
