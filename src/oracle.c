@@ -758,6 +758,9 @@ predictor_update_eventlog(struct predictor *pred)
 			case TPM2_EFI_HANDOFF_TABLES:
 			case TPM2_EFI_HANDOFF_TABLES2:
 			case TPM2_EFI_ACTION:
+			case TPM2_EVENT_NONHOST_CODE:
+			case TPM2_EVENT_NONHOST_CONFIG:
+			case TPM2_EVENT_NONHOST_INFO:
 				new_digest = old_digest;
 				break;
 
