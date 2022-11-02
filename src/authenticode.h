@@ -23,7 +23,7 @@
 
 #include "types.h"
 
-extern pecoff_image_info_t *pecoff_inspect(const char *path, const char *display_name);
+extern pecoff_image_info_t *pecoff_inspect(buffer_t *img_data, const char *display_name);
 extern void		pecoff_image_info_free(pecoff_image_info_t *);
 extern tpm_evdigest_t *	authenticode_get_digest(pecoff_image_info_t *, digest_ctx_t *);
 extern cert_table_t *	authenticode_get_certificate_table(const pecoff_image_info_t *img);

@@ -659,16 +659,12 @@ __pecoff_process_certificate_table(buffer_t *in, const pecoff_image_info_t *img,
 }
 
 pecoff_image_info_t *
-pecoff_inspect(const char *path, const char *display_name)
+pecoff_inspect(buffer_t *in, const char *display_name)
 {
 	pecoff_image_info_t *img;
 	authenticode_image_info_t *auth_info;
-	buffer_t *in;
 
-	debug("Reading EFI application %s from %s\n", display_name, path);
-
-	if (!(in = runtime_read_file(path, 0)))
-                return NULL;
+	debug("Reading EFI application %s\n", display_name);
 
 	img = pecoff_image_info_alloc(in, display_name);
 

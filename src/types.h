@@ -31,6 +31,7 @@ typedef struct digest_ctx	digest_ctx_t;
 typedef struct win_cert		win_cert_t;
 typedef struct cert_table	cert_table_t;
 typedef struct pecoff_image_info pecoff_image_info_t;
+typedef struct testcase		testcase_t;
 
 #endif /* TYPES_H */
 

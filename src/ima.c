@@ -19,24 +19,24 @@
  */
 
 #include <stdio.h>
+#include <unistd.h>
 
 #include "oracle.h"
+#include "runtime.h"
 
 /*
  * For the time being, PCR prediction does do anything with IMA
  * except making sure we're ignoring PCR 10 if IMA is active.
  */
 
-#define IMA_RUNTIME_MEASUREMENTS	"/sys/kernel/security/integrity/ima/ascii_runtime_measurements"
-
 bool
 ima_is_active(void)
 {
-	FILE *fp;
+	int fd;
 
-	if (!(fp = fopen(IMA_RUNTIME_MEASUREMENTS, "r")))
+	if ((fd = runtime_open_ima_measurements()) < 0)
 		return false;
 
-	fclose(fp);
+	close(fd);
 	return true;
 }

@@ -34,6 +34,7 @@
 #include "bufparser.h"
 #include "runtime.h"
 #include "digest.h"
+#include "testcase.h"
 
 enum {
 	STOP_EVENT_NONE,
@@ -79,6 +80,8 @@ enum {
 	OPT_AFTER,
 	OPT_BEFORE,
 	OPT_VERIFY,
+	OPT_CREATE_TESTCASE,
+	OPT_REPLAY_TESTCASE,
 };
 
 static struct option options[] = {
@@ -94,6 +97,8 @@ static struct option options[] = {
 	{ "before",		no_argument,		0,	OPT_BEFORE },
 	{ "verify",		required_argument,	0,	OPT_VERIFY },
 	{ "use-pesign",		no_argument,		0,	OPT_USE_PESIGN },
+	{ "create-testcase",	required_argument,	0,	OPT_CREATE_TESTCASE },
+	{ "replay-testcase",	required_argument,	0,	OPT_REPLAY_TESTCASE },
 
 	{ NULL }
 };
@@ -221,15 +226,9 @@ pcr_bank_init_from_zero(tpm_pcr_bank_t *bank)
 }
 
 static void
-pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank)
+pcr_bank_init_from_snapshot_fp(FILE *fp, tpm_pcr_bank_t *bank)
 {
-	const char *efivar_path = "/sys/firmware/efi/vars/GrubPcrSnapshot-" GRUB_PCR_SNAPSHOT_UUID "/data";
 	char linebuf[256];
-	FILE *fp;
-
-	debug("Trying to find PCR values in %s\n", efivar_path);
-	if (!(fp = fopen(efivar_path, "r")))
-		fatal("Unable to open \"%s\": %m\n", efivar_path);
 
 	while (fgets(linebuf, sizeof(linebuf), fp) != NULL) {
 		unsigned int index;
@@ -238,7 +237,7 @@ pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank)
 		unsigned int len;
 		char *w;
 
-		debug("=> %s", linebuf);
+		// debug("=> %s", linebuf);
 		if (!(w = strtok(linebuf, " \t\n")))
 			continue;
 
@@ -246,7 +245,7 @@ pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank)
 		 || !(algo = strtok(NULL, " \t\n")))
 			continue;
 
-		debug("inspecting %u:%s\n", index, algo);
+		// debug("inspecting %u:%s\n", index, algo);
 		if ((pcr = pcr_bank_get_register(bank, index, algo)) == NULL)
 			continue;
 
@@ -270,6 +269,19 @@ pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank)
 }
 
 static void
+pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank)
+{
+	const char *efivar_path = "/sys/firmware/efi/vars/GrubPcrSnapshot-" GRUB_PCR_SNAPSHOT_UUID "/data";
+	FILE *fp;
+
+	debug("Trying to find PCR values in %s\n", efivar_path);
+	if (!(fp = fopen(efivar_path, "r")))
+		fatal("Unable to open \"%s\": %m\n", efivar_path);
+
+	pcr_bank_init_from_snapshot_fp(fp, bank);
+}
+
+static void
 fapi_error(const char *func, int rc)
 {
 	fatal("TPM2: function %s returns %d\n", func, rc);
@@ -284,14 +296,23 @@ pcr_bank_init_from_current(tpm_pcr_bank_t *bank)
 	size_t digest_sizes[8] = { 0 };
 	unsigned int i;
 	int rc;
+	FILE *recording, *playback;
 
 	if (strcmp(algo_name, "sha256"))
 		fatal("Cannot initialize from current TPM values for digest algorithm %s - not implemented\n",
 				algo_name);
 
+	playback = runtime_maybe_playback_pcrs();
+	if (playback) {
+		pcr_bank_init_from_snapshot_fp(playback, bank);
+		return;
+	}
+
 	rc = Fapi_Initialize(&context, NULL);
 	if (rc != 0)
 		fapi_error("Fapi_Initialize", rc);
+
+	recording = runtime_maybe_record_pcrs();
 
 	for (i = 0; i < 24; ++i) {
 		tpm_evdigest_t *pcr;
@@ -321,7 +342,12 @@ pcr_bank_init_from_current(tpm_pcr_bank_t *bank)
 
 		pcr_bank_mark_valid(bank, i);
 		Fapi_Free(digests[0]);
+
+		if (recording)
+			fprintf(recording, "%02u sha256 %s\n", i, digest_print_value(pcr));
 	}
+
+	fclose(recording);
 }
 
 static void
@@ -1029,6 +1055,8 @@ main(int argc, char **argv)
 	bool opt_stop_before = true;
 	char *opt_verify = NULL;
 	char *pcr_mask_string;
+	char *opt_create_testcase = NULL;
+	char *opt_replay_testcase = NULL;
 	int c, exit_code = 0;
 
 	while ((c = getopt_long(argc, argv, "dhA:CF:LSZ", options, NULL)) != EOF) {
@@ -1072,6 +1100,12 @@ main(int argc, char **argv)
 		case OPT_VERIFY:
 			opt_verify = optarg;
 			break;
+		case OPT_CREATE_TESTCASE:
+			opt_create_testcase = optarg;
+			break;
+		case OPT_REPLAY_TESTCASE:
+			opt_replay_testcase = optarg;
+			break;
 		case 'h':
 			usage(0, NULL);
 		default:
@@ -1081,6 +1115,15 @@ main(int argc, char **argv)
 
 	if (optind + 1 > argc)
 		usage(1, "Expected PCR index as argument");
+
+	if (opt_replay_testcase && opt_create_testcase)
+		fatal("--create-testcase and --replay-testcase are mutually exclusive\n");
+
+	if (opt_replay_testcase)
+		runtime_replay_testcase(testcase_alloc(opt_replay_testcase));
+
+	if (opt_create_testcase)
+		runtime_record_testcase(testcase_alloc(opt_create_testcase));
 
 	pcr_mask_string = argv[optind++];
 	if (!strcmp(pcr_mask_string, "all")) {

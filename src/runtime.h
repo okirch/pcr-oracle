@@ -32,8 +32,11 @@ typedef struct block_dev_io	block_dev_io_t;
 extern file_locator_t *	runtime_locate_file(const char *fs_dev, const char *path);
 extern void		file_locator_free(file_locator_t *);
 extern const char *	file_locator_get_full_path(const file_locator_t *);
+extern int		runtime_open_eventlog(void);
+extern int		runtime_open_ima_measurements(void);
 extern buffer_t *	runtime_read_file(const char *pathname, int flags);
 extern buffer_t *	runtime_read_efi_variable(const char *var_name);
+extern buffer_t *	runtime_read_efi_application(const char *partition, const char *application);
 extern char *		runtime_disk_for_partition(const char *part_dev);
 extern char *		runtime_blockdev_by_partuuid(const char *uuid);
 extern block_dev_io_t *	runtime_blockdev_open(const char *dev);
@@ -41,5 +44,13 @@ extern buffer_t *	runtime_blockdev_read_lba(block_dev_io_t *, unsigned int block
 extern void		runtime_blockdev_close(block_dev_io_t *);
 
 extern unsigned int	runtime_blockdev_bytes_to_sectors(const block_dev_io_t *, unsigned int size);
+
+extern void		runtime_record_testcase(testcase_t *);
+extern void		runtime_replay_testcase(testcase_t *);
+
+#include <stdio.h>
+
+extern FILE *		runtime_maybe_record_pcrs(void);
+extern FILE *		runtime_maybe_playback_pcrs(void);
 
 #endif /* RUNTIME_H */

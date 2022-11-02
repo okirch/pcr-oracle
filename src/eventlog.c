@@ -22,7 +22,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include <fcntl.h>
 #include <unistd.h>
 
 #include <tss2/tss2_tpm2_types.h>
@@ -108,14 +107,11 @@ event_log_get_algo_info(tpm_event_log_reader_t *log, unsigned int algo_id)
 tpm_event_log_reader_t *
 event_log_open(void)
 {
-	const char *eventlog_path = "/sys/kernel/security/tpm0/binary_bios_measurements";
 	tpm_event_log_reader_t *log;
 
 	log = calloc(1, sizeof(*log));
 	log->tpm_version = 1;
-
-	if ((log->fd = open(eventlog_path, O_RDONLY)) < 0)
-		fatal("Unable to open TPM eventlog \"%s\"\n", eventlog_path);
+	log->fd = runtime_open_eventlog();
 	return log;
 }
 

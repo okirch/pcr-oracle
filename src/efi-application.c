@@ -153,8 +153,8 @@ __tpm_event_efi_bsa_inspect_image(tpm_parsed_event_t *parsed)
 {
         struct efi_bsa_event *evspec = &parsed->efi_bsa_event;
 	char path[PATH_MAX];
-	const char *display_name, *fullpath;
-	file_locator_t *loc;
+	const char *display_name;
+	buffer_t *img_data;
 
 	if (!evspec->efi_application)
 		return false;
@@ -165,15 +165,15 @@ __tpm_event_efi_bsa_inspect_image(tpm_parsed_event_t *parsed)
 	} else
 		display_name = evspec->efi_application;
 
-	loc = runtime_locate_file(evspec->efi_partition, evspec->efi_application);
-	if (!loc)
+	img_data = runtime_read_efi_application(evspec->efi_partition, evspec->efi_application);
+	if (img_data == NULL)
 		fatal("Failed to locate EFI application %s\n", display_name);
 
-	if (!(fullpath = file_locator_get_full_path(loc)))
+	/* if successful, this takes ownership of img_data */
+	if (!(evspec->img_info = pecoff_inspect(img_data, display_name))) {
+		buffer_free(img_data);
 		return false;
-
-	if (!(evspec->img_info = pecoff_inspect(fullpath, display_name)))
-		return false;
+	}
 
 	return true;
 }
