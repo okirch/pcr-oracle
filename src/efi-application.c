@@ -81,7 +81,7 @@ __tpm_event_efi_bsa_describe(const tpm_parsed_event_t *parsed)
 }
 
 bool
-__tpm_event_parse_efi_bsa(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t *bp)
+__tpm_event_parse_efi_bsa(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t *bp, tpm_event_log_scan_ctx_t *ctx)
 {
 	struct efi_bsa_event *evspec = &parsed->efi_bsa_event;
 	size_t device_path_len;
@@ -102,7 +102,15 @@ __tpm_event_parse_efi_bsa(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t 
 	if (!__tpm_event_parse_efi_device_path(&evspec->device_path, &path_buf))
 		return false;
 
-	__tpm_event_efi_bsa_extract_location(parsed);
+	if (__tpm_event_efi_bsa_extract_location(parsed)
+	 && evspec->efi_application) {
+		/* If a previous BSA event specified a device path with a partition,
+		 * then the next event may omit it. */
+		if (evspec->efi_partition != NULL)
+			assign_string(&ctx->efi_partition, evspec->efi_partition);
+		else
+			assign_string(&evspec->efi_partition, ctx->efi_partition);
+	}
 
 	return true;
 }

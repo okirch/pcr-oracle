@@ -38,6 +38,9 @@ typedef struct tpm_event {
 
 	unsigned int		event_size;
 	void *			event_data;
+
+	/* set by the predictor during pre-scan */
+	int			rehash_strategy;
 } tpm_event_t;
 
 typedef void			tpm_event_bit_printer(const char *, ...);
@@ -165,6 +168,19 @@ enum {
 	TPM2_EFI_DEVPATH_MESSAGING_SUBTYPE_EMMC		= 0x1D,
 };
 
+enum {
+	EVENT_STRATEGY_PARSE_NONE,
+	EVENT_STRATEGY_PARSE_REHASH,
+	EVENT_STRATEGY_COPY,
+};
+
+/*
+ * This is used while scanning the event log.
+ */
+typedef struct tpm_event_log_scan_ctx {
+	char *			efi_partition;
+} tpm_event_log_scan_ctx_t;
+
 /*
  * This structure is used when re-hashing all events in the event log.
  *
@@ -226,7 +242,7 @@ typedef struct tpm_parsed_event {
 
 		struct shim_event {
 			char *		string;
-			const char *	efi_variable;
+			char *		efi_variable;
 		} shim_event;
 
 		struct efi_gpt_event {
@@ -245,7 +261,9 @@ extern void			__tpm_event_print(tpm_event_t *ev, tpm_event_bit_printer *print_fn
 extern void			tpm_event_log_rehash_ctx_init(tpm_event_log_rehash_ctx_t *,
 					const tpm_algo_info_t *);
 extern void			tpm_event_log_rehash_ctx_destroy(tpm_event_log_rehash_ctx_t *);
-extern tpm_parsed_event_t *	tpm_event_parse(tpm_event_t *ev);
+extern void			tpm_event_log_scan_ctx_init(tpm_event_log_scan_ctx_t *);
+extern void			tpm_event_log_scan_ctx_destroy(tpm_event_log_scan_ctx_t *);
+extern tpm_parsed_event_t *	tpm_event_parse(tpm_event_t *ev, tpm_event_log_scan_ctx_t *);
 extern const char *		tpm_event_type_to_string(unsigned int event_type);
 extern const tpm_evdigest_t *	tpm_event_get_digest(const tpm_event_t *ev, const char *algo_name);
 extern void			tpm_parsed_event_print(tpm_parsed_event_t *parsed,
@@ -257,7 +275,8 @@ extern const tpm_evdigest_t *	tpm_parsed_event_rehash(const tpm_event_t *, const
 
 /* helper functions for parsing events */
 extern bool			__tpm_event_parse_efi_variable(tpm_event_t *, tpm_parsed_event_t *, buffer_t *);
-extern bool			__tpm_event_parse_efi_bsa(tpm_event_t *, tpm_parsed_event_t *, buffer_t *);
+extern bool			__tpm_event_parse_efi_bsa(tpm_event_t *, tpm_parsed_event_t *, buffer_t *,
+					tpm_event_log_scan_ctx_t *);
 extern bool			__tpm_event_parse_efi_gpt(tpm_event_t *, tpm_parsed_event_t *, buffer_t *);
 extern bool			__tpm_event_parse_efi_device_path(efi_device_path_t *, buffer_t *);
 extern void			__tpm_event_efi_device_path_print(const efi_device_path_t *path,

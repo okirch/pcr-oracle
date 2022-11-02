@@ -385,7 +385,6 @@ tpm_event_print(tpm_event_t *ev)
 void
 __tpm_event_print(tpm_event_t *ev, tpm_event_bit_printer *print_fn)
 {
-	tpm_parsed_event_t *parsed;
 	unsigned int i;
 
 	print_fn("%05lx: event type=%s pcr=%d digests=%d data=%u bytes\n",
@@ -393,9 +392,8 @@ __tpm_event_print(tpm_event_t *ev, tpm_event_bit_printer *print_fn)
 			tpm_event_type_to_string(ev->event_type),
 			ev->pcr_index, ev->pcr_count, ev->event_size);
 
-	parsed = tpm_event_parse(ev);
-	if (parsed)
-		tpm_parsed_event_print(parsed, print_fn);
+	if (ev->__parsed)
+		tpm_parsed_event_print(ev->__parsed, print_fn);
 
 	for (i = 0; i < ev->pcr_count; ++i) {
 		const tpm_evdigest_t *d = &ev->pcr_values[i];
@@ -715,7 +713,7 @@ __tpm_event_shim_event_parse(tpm_event_t *ev, tpm_parsed_event_t *parsed, const 
 	shim_rt_var = shim_variable_get_full_rtname(value);
 	if (shim_rt_var != NULL) {
 		parsed->event_subtype = SHIM_EVENT_VARIABLE;
-		evspec->efi_variable = shim_rt_var;
+		assign_string(&evspec->efi_variable, shim_rt_var);
 	} else {
 		error("Unknown shim IPL event %s\n", value);
 		return NULL;
@@ -757,7 +755,7 @@ __tpm_event_parse_ipl(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t *bp)
 }
 
 static bool
-__tpm_event_parse(tpm_event_t *ev, tpm_parsed_event_t *parsed)
+__tpm_event_parse(tpm_event_t *ev, tpm_parsed_event_t *parsed, tpm_event_log_scan_ctx_t *ctx)
 {
 	buffer_t buf;
 
@@ -774,7 +772,7 @@ __tpm_event_parse(tpm_event_t *ev, tpm_parsed_event_t *parsed)
 
 	case TPM2_EFI_BOOT_SERVICES_APPLICATION:
 	case TPM2_EFI_BOOT_SERVICES_DRIVER:
-		return __tpm_event_parse_efi_bsa(ev, parsed, &buf);
+		return __tpm_event_parse_efi_bsa(ev, parsed, &buf, ctx);
 
 	case TPM2_EFI_GPT_EVENT:
 		return __tpm_event_parse_efi_gpt(ev, parsed, &buf);
@@ -784,13 +782,13 @@ __tpm_event_parse(tpm_event_t *ev, tpm_parsed_event_t *parsed)
 }
 
 tpm_parsed_event_t *
-tpm_event_parse(tpm_event_t *ev)
+tpm_event_parse(tpm_event_t *ev, tpm_event_log_scan_ctx_t *ctx)
 {
 	if (!ev->__parsed) {
 		tpm_parsed_event_t *parsed;
 
 		parsed = tpm_parsed_event_new(ev->event_type);
-		if (__tpm_event_parse(ev, parsed))
+		if (__tpm_event_parse(ev, parsed, ctx))
 			ev->__parsed = parsed;
 		else
 			tpm_parsed_event_free(parsed);
@@ -808,6 +806,18 @@ tpm_event_log_rehash_ctx_init(tpm_event_log_rehash_ctx_t *ctx, const tpm_algo_in
 
 void
 tpm_event_log_rehash_ctx_destroy(tpm_event_log_rehash_ctx_t *ctx)
+{
+	drop_string(&ctx->efi_partition);
+}
+
+void
+tpm_event_log_scan_ctx_init(tpm_event_log_scan_ctx_t *ctx)
+{
+	memset(ctx, 0, sizeof(*ctx));
+}
+
+void
+tpm_event_log_scan_ctx_destroy(tpm_event_log_scan_ctx_t *ctx)
 {
 	drop_string(&ctx->efi_partition);
 }

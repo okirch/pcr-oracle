@@ -542,7 +542,7 @@ predictor_update_file(struct predictor *pred, unsigned int pcr_index, const char
 }
 
 static bool
-__check_stop_event(tpm_event_t *ev, int type, const char *value)
+__check_stop_event(tpm_event_t *ev, int type, const char *value, tpm_event_log_scan_ctx_t *ctx)
 {
 	const char *grub_arg = NULL;
 	tpm_parsed_event_t *parsed;
@@ -556,7 +556,7 @@ __check_stop_event(tpm_event_t *ev, int type, const char *value)
 		 || ev->event_type != TPM2_EVENT_IPL)
 			return false;
 
-		if (!(parsed = tpm_event_parse(ev)))
+		if (!(parsed = tpm_event_parse(ev, ctx)))
 			return false;
 
 		if (parsed->event_subtype != GRUB_EVENT_COMMAND)
@@ -572,7 +572,7 @@ __check_stop_event(tpm_event_t *ev, int type, const char *value)
 		 || ev->event_type != TPM2_EVENT_IPL)
 			return false;
 
-		if (!(parsed = tpm_event_parse(ev)))
+		if (!(parsed = tpm_event_parse(ev, ctx)))
 			return false;
 
 		if (parsed->event_subtype != GRUB_EVENT_FILE)
@@ -615,7 +615,9 @@ __predictor_lookahead_efi_partition(tpm_event_t *ev, tpm_event_log_rehash_ctx_t 
 
 		if (ev->event_type != TPM2_EFI_BOOT_SERVICES_APPLICATION)
 			continue;
-		if (!(parsed = tpm_event_parse(ev)))
+
+		/* BSA events have already been parsed during the pre-scan */
+		if (!(parsed = ev->__parsed))
 			continue;
 
 		assign_string(&ctx->efi_partition, parsed->efi_bsa_event.efi_partition);
@@ -647,7 +649,8 @@ __predictor_lookahead_shim_loaded(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *c
 
 		if (ev->event_type != TPM2_EFI_BOOT_SERVICES_APPLICATION)
 			continue;
-		if (!(parsed = tpm_event_parse(ev)))
+		/* BSA events have already been parsed during the pre-scan */
+		if (!(parsed = ev->__parsed))
 			continue;
 
 		if (!(efi_partition = parsed->efi_bsa_event.efi_partition))
@@ -665,11 +668,104 @@ __predictor_lookahead_shim_loaded(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *c
 	}
 }
 
+static bool
+int_list_contains(const int *list, unsigned int value)
+{
+	while (*list != -1) {
+		if (*list++ == value)
+			return true;
+	}
+	return false;
+}
+
+static int
+predictor_get_event_strategy(unsigned int event_type)
+{
+	static int rehash_types[] = {
+		TPM2_EFI_BOOT_SERVICES_APPLICATION,
+		TPM2_EFI_BOOT_SERVICES_DRIVER,
+		TPM2_EFI_VARIABLE_BOOT,
+		TPM2_EFI_VARIABLE_AUTHORITY,
+		TPM2_EFI_VARIABLE_DRIVER_CONFIG,
+
+		/* IPL: used by grub2 for PCR 8 and PCR9 */
+		TPM2_EVENT_IPL,
+
+		/*
+		 * EFI_GPT_EVENT: used in updates of PCR5, seems to be a hash of several GPT headers.
+		 *	We should probably rebuild in case someone changed the partitioning.
+		 *	However, not needed as long as we don't seal against PCR5.
+		 */
+		TPM2_EFI_GPT_EVENT,
+
+		-1,
+	};
+	static int copy_types[] = {
+		TPM2_EVENT_NO_ACTION,
+		TPM2_EVENT_S_CRTM_CONTENTS,
+		TPM2_EVENT_S_CRTM_VERSION,
+		TPM2_EFI_PLATFORM_FIRMWARE_BLOB,
+		TPM2_EFI_PLATFORM_FIRMWARE_BLOB2,
+		TPM2_EVENT_SEPARATOR,
+		TPM2_EVENT_POST_CODE,
+		TPM2_EFI_HANDOFF_TABLES,
+		TPM2_EFI_HANDOFF_TABLES2,
+		TPM2_EFI_ACTION,
+		TPM2_EVENT_NONHOST_CODE,
+		TPM2_EVENT_NONHOST_CONFIG,
+		TPM2_EVENT_NONHOST_INFO,
+		TPM2_EVENT_PLATFORM_CONFIG_FLAGS,
+
+		-1
+	};
+
+	if (int_list_contains(rehash_types, event_type))
+		return EVENT_STRATEGY_PARSE_REHASH;
+	if (int_list_contains(copy_types, event_type))
+		return EVENT_STRATEGY_COPY;
+
+	return EVENT_STRATEGY_PARSE_NONE;
+}
+
+/*
+ * During the pre-scan, we propagate EFI partition information from one BSA event
+ * to the next.
+ */
+static void
+predictor_pre_scan_eventlog(struct predictor *pred, tpm_event_t **stop_event_p)
+{
+	tpm_event_log_scan_ctx_t scan_ctx;
+	tpm_event_t *ev;
+
+	*stop_event_p = NULL;
+
+	tpm_event_log_scan_ctx_init(&scan_ctx);
+	for (ev = pred->event_log; ev; ev = ev->next) {
+		ev->rehash_strategy = predictor_get_event_strategy(ev->event_type);
+		/* debug("%s -> %d\n", tpm_event_type_to_string(ev->event_type), ev->rehash_strategy); */
+
+		if (ev->rehash_strategy == EVENT_STRATEGY_PARSE_REHASH) {
+			if (!tpm_event_parse(ev, &scan_ctx)) {
+				/* Provide better error logging */
+				fatal("Unable to parse %s event from TPM log\n", tpm_event_type_to_string(ev->event_type));
+			}
+		}
+
+		if (__check_stop_event(ev, pred->stop_event.type, pred->stop_event.value, &scan_ctx)) {
+			*stop_event_p = ev;
+			break;
+		}
+	}
+	tpm_event_log_scan_ctx_destroy(&scan_ctx);
+}
+
 static void
 predictor_update_eventlog(struct predictor *pred)
 {
 	tpm_event_log_rehash_ctx_t rehash_ctx;
-	tpm_event_t *ev;
+	tpm_event_t *ev, *stop_event = NULL;
+
+	predictor_pre_scan_eventlog(pred, &stop_event);
 
 	tpm_event_log_rehash_ctx_init(&rehash_ctx, pred->algo_info);
 	rehash_ctx.use_pesign = opt_use_pesign;
@@ -678,7 +774,7 @@ predictor_update_eventlog(struct predictor *pred)
 		tpm_evdigest_t *pcr;
 		bool stop = false;
 
-		stop = __check_stop_event(ev, pred->stop_event.type, pred->stop_event.value);
+		stop = (ev == stop_event);
 		if (stop && !pred->stop_event.after) {
 			debug("Stopped processing event log before indicated event\n");
 			break;
@@ -724,43 +820,16 @@ predictor_update_eventlog(struct predictor *pred)
 			if (ev->event_type == TPM2_EFI_BOOT_SERVICES_APPLICATION)
 				__predictor_lookahead_shim_loaded(ev, &rehash_ctx);
 
-			switch (ev->event_type) {
-			case TPM2_EFI_BOOT_SERVICES_APPLICATION:
-			case TPM2_EFI_BOOT_SERVICES_DRIVER:
-			case TPM2_EFI_VARIABLE_BOOT:
-			case TPM2_EFI_VARIABLE_AUTHORITY:
-			case TPM2_EFI_VARIABLE_DRIVER_CONFIG:
-
-			/* IPL: used by grub2 for PCR 8 and PCR9 */
-			case TPM2_EVENT_IPL:
-
-			/*
-			 * EFI_GPT_EVENT: used in updates of PCR5, seems to be a hash of several GPT headers.
-			 *	We should probably rebuild in case someone changed the partitioning.
-			 *	However, not needed as long as we don't seal against PCR5.
-			 */
-			case TPM2_EFI_GPT_EVENT:
-				if (!(parsed = tpm_event_parse(ev)))
-					fatal("Unable to parse %s event from TPM log\n", tpm_event_type_to_string(ev->event_type));
+			switch (ev->rehash_strategy) {
+			case EVENT_STRATEGY_PARSE_REHASH:
+				/* Event already parsed in pre-scan */
+				parsed = ev->__parsed;
 
 				new_digest = tpm_parsed_event_rehash(ev, parsed, &rehash_ctx);
 				description = tpm_parsed_event_describe(parsed);
 				break;
 
-
-			case TPM2_EVENT_NO_ACTION:
-			case TPM2_EVENT_S_CRTM_CONTENTS:
-			case TPM2_EVENT_S_CRTM_VERSION:
-			case TPM2_EFI_PLATFORM_FIRMWARE_BLOB:
-			case TPM2_EFI_PLATFORM_FIRMWARE_BLOB2:
-			case TPM2_EVENT_SEPARATOR:
-			case TPM2_EVENT_POST_CODE:
-			case TPM2_EFI_HANDOFF_TABLES:
-			case TPM2_EFI_HANDOFF_TABLES2:
-			case TPM2_EFI_ACTION:
-			case TPM2_EVENT_NONHOST_CODE:
-			case TPM2_EVENT_NONHOST_CONFIG:
-			case TPM2_EVENT_NONHOST_INFO:
+			case EVENT_STRATEGY_COPY:
 				new_digest = old_digest;
 				break;
 
