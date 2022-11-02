@@ -34,6 +34,7 @@ extern const char *	file_locator_get_full_path(const file_locator_t *);
 extern buffer_t *	runtime_read_file(const char *pathname, int flags);
 extern buffer_t *	runtime_read_efi_variable(const char *var_name);
 extern char *		runtime_disk_for_partition(const char *part_dev);
+extern char *		runtime_blockdev_by_partuuid(const char *uuid);
 extern int		runtime_blockdev_open(const char *dev);
 extern buffer_t *	runtime_blockdev_read_lba(int fd, unsigned int block, unsigned int count);
 

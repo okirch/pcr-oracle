@@ -229,6 +229,15 @@ runtime_disk_for_partition(const char *part_dev)
 	return result;
 }
 
+char *
+runtime_blockdev_by_partuuid(const char *uuid)
+{
+	char pathbuf[PATH_MAX];
+
+	snprintf(pathbuf, sizeof(pathbuf), "/dev/disk/by-partuuid/%s", uuid);
+	return realpath(pathbuf, NULL);
+}
+
 int
 runtime_blockdev_open(const char *dev)
 {

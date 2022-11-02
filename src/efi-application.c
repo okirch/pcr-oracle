@@ -117,15 +117,12 @@ __tpm_event_efi_bsa_extract_location(tpm_parsed_event_t *parsed)
 
 	efi_path = &parsed->efi_bsa_event.device_path;
 	for (i = 0, item = efi_path->entries; i < efi_path->count; ++i, ++item) {
-		char pathbuf[PATH_MAX];
 		const char *uuid, *filepath;
 
 		if ((uuid = __tpm_event_efi_device_path_item_harddisk_uuid(item)) != NULL) {
 			char *dev_path;
 
-			/* FIXME: should go to runtime.c */
-			snprintf(pathbuf, sizeof(pathbuf), "/dev/disk/by-partuuid/%s", uuid);
-			if ((dev_path = realpath(pathbuf, NULL)) == NULL) {
+			if ((dev_path = runtime_blockdev_by_partuuid(uuid)) == NULL) {
 				error("Cannot find device for partition with uuid %s\n", uuid);
 				return false;
 			}
