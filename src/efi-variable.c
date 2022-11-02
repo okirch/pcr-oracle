@@ -28,6 +28,7 @@
 #include "bufparser.h"
 #include "runtime.h"
 #include "digest.h"
+#include "authenticode.h"
 #include "util.h"
 
 
@@ -133,19 +134,20 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 	}
 
 	if (!strcmp(parsed->efi_variable_event.variable_name, "Shim")) {
-		if (ctx->stage2_authenticode_signer == NULL) {
-			error("Sorry, I was not able to extract the cert of 2nd stage boot loader\n");
+		if (ctx->next_stage_img == NULL) {
+			error("Sorry, no image info for next stage boot loader\n");
 			goto out;
 		}
 
-		file_data = ctx->stage2_authenticode_signer;
+		file_data = authenticode_get_signer(ctx->next_stage_img);
 	} else {
 		file_data = runtime_read_efi_variable(var_name);
-		if (file_data == NULL)
-			goto out;
-
-		buffers_to_free[num_buffers_to_free++] = file_data;
 	}
+
+	if (file_data == NULL)
+		goto out;
+
+	buffers_to_free[num_buffers_to_free++] = file_data;
 
 
 	if (hash_strategy == HASH_STRATEGY_EVENT) {

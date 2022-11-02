@@ -191,7 +191,7 @@ typedef struct tpm_event_log_rehash_ctx {
 	const tpm_algo_info_t *	algo;
 	bool			use_pesign;		/* compute authenticode FP using external pesign application */
 
-	buffer_t *		stage2_authenticode_signer;
+	const pecoff_image_info_t *next_stage_img;
 } tpm_event_log_rehash_ctx_t;
 
 #define GRUB_COMMAND_ARGV_MAX	32
@@ -226,6 +226,10 @@ typedef struct tpm_parsed_event {
 			/* extracted from device_path: */
 			char *		efi_partition;
 			char *		efi_application;
+
+			/* If we can find an on-disk EFI application for it, try to
+			 * inspect the PECOFF image and extract useful stuff. */
+			pecoff_image_info_t *img_info;
 		} efi_bsa_event;
 
 		/* for GRUB_COMMAND, GRUB_KERNEL_CMDLINE */
@@ -287,7 +291,7 @@ extern const char *		__tpm_event_efi_device_path_item_file_path(const struct efi
 
 extern const char *		tpm_efi_variable_event_extract_full_varname(const tpm_parsed_event_t *parsed);
 extern const char *		tpm_event_decode_uuid(const unsigned char *data);
-extern buffer_t *		efi_application_extract_signer(const char *device_path, const char *file_path);
+extern buffer_t *		efi_application_extract_signer(const tpm_parsed_event_t *parsed);
 
 extern bool			shim_variable_name_valid(const char *name);
 extern const char *		shim_variable_get_rtname(const char *name);

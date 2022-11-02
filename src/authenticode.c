@@ -81,10 +81,9 @@ typedef struct pecoff_section {
 	pecoff_placement_t	raw;
 } pecoff_section_t;
 
-typedef struct pecoff_image_info {
-	authenticode_image_info_t *auth_info;
-
-	unsigned int		format;
+struct pecoff_image_info {
+	char *			display_name;
+	buffer_t *		data;
 
 	struct {
 		uint32_t	offset;
@@ -102,12 +101,16 @@ typedef struct pecoff_image_info {
 		uint32_t	data_dir_count;
 	} pe_optional_header;
 
+	unsigned int		format;
+
 	unsigned int		num_data_dirs;
 	pecoff_image_datadir_t *data_dirs;
 
 	unsigned int		num_sections;
 	pecoff_section_t *	section;
-} pecoff_image_info_t;
+
+	authenticode_image_info_t auth_info;
+};
 
 #define MSDOS_STUB_PE_OFFSET	0x3c
 
@@ -127,6 +130,27 @@ typedef struct pecoff_image_info {
 #define PECOFF_FORMAT_PE32				0x10b
 #define PECOFF_FORMAT_PE32_PLUS				0x20b
 #define PECOFF_DATA_DIRECTORY_CERTTBL_INDEX		4
+
+pecoff_image_info_t *
+pecoff_image_info_alloc(buffer_t *data, const char *display_name)
+{
+	pecoff_image_info_t *img;
+
+	img = calloc(1, sizeof(*img));
+	assign_string(&img->display_name, display_name);
+	img->data = data;
+	return img;
+}
+
+void
+pecoff_image_info_free(pecoff_image_info_t *img)
+{
+	buffer_free(img->data);
+	free(img->display_name);
+	free(img->data_dirs);
+	free(img->section);
+	free(img);
+}
 
 static void
 authenticode_set_range(authenticode_image_info_t *info, unsigned int offset, unsigned int len)
@@ -387,7 +411,7 @@ __pecoff_process_optional_header(buffer_t *in, pecoff_image_info_t *info)
 
 	/* Skip the checksum field when computing the digest.
 	 * The offset of the checksum is the same for PE32 and PE32+ */
-	hash_base = authenticode_skip(info->auth_info, hash_base,
+	hash_base = authenticode_skip(&info->auth_info, hash_base,
 			hdr_offset + PECOFF_OPTIONAL_HDR_CHECKSUM_OFFSET, 4);
 
 	if (!buffer_seek_read(&hdr, data_dir_offset)
@@ -411,16 +435,16 @@ __pecoff_process_optional_header(buffer_t *in, pecoff_image_info_t *info)
 	}
 
 	/* Exclude the data directory entry pointing to the certificate table */
-	hash_base = authenticode_skip(info->auth_info, hash_base,
+	hash_base = authenticode_skip(&info->auth_info, hash_base,
 			hdr_offset + data_dir_offset + 4 + 8 * PECOFF_DATA_DIRECTORY_CERTTBL_INDEX, 8);
 
-	authenticode_exclude_range(info->auth_info,
+	authenticode_exclude_range(&info->auth_info,
 			info->data_dirs[PECOFF_DATA_DIRECTORY_CERTTBL_INDEX].addr,
 			info->data_dirs[PECOFF_DATA_DIRECTORY_CERTTBL_INDEX].size);
 
 	/* digest everything until the end of the PE headers, incl the section headers */
-	authenticode_add_range(info->auth_info, hash_base, info->pe_optional_header.size_of_headers - hash_base);
-	info->auth_info->hashed_bytes = info->pe_optional_header.size_of_headers;
+	authenticode_add_range(&info->auth_info, hash_base, info->pe_optional_header.size_of_headers - hash_base);
+	info->auth_info.hashed_bytes = info->pe_optional_header.size_of_headers;
 
 	return true;
 }
@@ -464,10 +488,10 @@ __pecoff_process_sections(buffer_t *in, pecoff_image_info_t *info)
 	 * let authenticode_finalize() do it for us. */
 	for (i = 0, sec = info->section; i < num_sections; ++i, ++sec) {
 		if (sec->raw.size != 0) {
-			authenticode_add_range(info->auth_info, sec->raw.addr, sec->raw.size);
+			authenticode_add_range(&info->auth_info, sec->raw.addr, sec->raw.size);
 			/* Note: even if we later omit (part of) this section because it overlaps
 			 * a hole, we still account for these as "hashed_bytes" */
-			info->auth_info->hashed_bytes += sec->raw.size;
+			info->auth_info.hashed_bytes += sec->raw.size;
 		}
 	}
 
@@ -574,7 +598,7 @@ cert_table_free(cert_table_t *cert_tbl)
 }
 
 static bool
-__pecoff_process_certificate_table(buffer_t *in, pecoff_image_info_t *img, cert_table_t *cert_tbl)
+__pecoff_process_certificate_table(buffer_t *in, const pecoff_image_info_t *img, cert_table_t *cert_tbl)
 {
 	buffer_t cert_tbl_data;
 
@@ -634,34 +658,40 @@ __pecoff_process_certificate_table(buffer_t *in, pecoff_image_info_t *img, cert_
 	return true;
 }
 
-static bool
-__pecoff_get_authenticode_ranges(buffer_t *in, authenticode_image_info_t *auth_info)
+pecoff_image_info_t *
+pecoff_inspect(const char *path, const char *display_name)
 {
-	pecoff_image_info_t img_info;
+	pecoff_image_info_t *img;
+	authenticode_image_info_t *auth_info;
+	buffer_t *in;
 
-	memset(&img_info, 0, sizeof(img_info));
-	img_info.auth_info = auth_info;
+	debug("Reading EFI application %s from %s\n", display_name, path);
 
-	pe_debug("Processing PE COFF image\n");
-	if (!__pecoff_process_header(in, &img_info)) {
+	if (!(in = runtime_read_file(path, 0)))
+                return NULL;
+
+	img = pecoff_image_info_alloc(in, display_name);
+
+	if (!__pecoff_process_header(in, img)) {
 		error("PECOFF: error processing image header\n");
-		return false;
+		goto failed;
 	}
 
-	__pecoff_show_header(&img_info);
+	__pecoff_show_header(img);
 
-	if (!__pecoff_process_optional_header(in, &img_info)) {
+	if (!__pecoff_process_optional_header(in, img)) {
 		error("PECOFF: error processing optional header of image file\n");
-		return false;
+		goto failed;
 	}
 
-	__pecoff_show_optional_header(&img_info);
+	__pecoff_show_optional_header(img);
 
-	if (!__pecoff_process_sections(in, &img_info)) {
+	if (!__pecoff_process_sections(in, img)) {
 		error("PECOFF: error processing section table of image file\n");
-		return false;
+		goto failed;
 	}
 
+	auth_info = &img->auth_info;
 	if (auth_info->hashed_bytes < in->wpos) {
 		unsigned int trailing = in->wpos - auth_info->hashed_bytes;
 
@@ -670,40 +700,26 @@ __pecoff_get_authenticode_ranges(buffer_t *in, authenticode_image_info_t *auth_i
 	}
 
 	authenticode_set_range(auth_info, 0, auth_info->hashed_bytes);
-	return true;
+	return img;
+
+failed:
+	pecoff_image_info_free(img);
+	return NULL;
 }
 
 tpm_evdigest_t *
-authenticode_get_digest(buffer_t *raw_data, digest_ctx_t *digest)
+authenticode_get_digest(pecoff_image_info_t *img, digest_ctx_t *digest)
 {
-	authenticode_image_info_t auth_info;
-	tpm_evdigest_t *md = NULL;
-
-	memset(&auth_info, 0, sizeof(auth_info));
-	if (__pecoff_get_authenticode_ranges(raw_data, &auth_info))
-		md = authenticode_compute(&auth_info, raw_data, digest);
-	return md;
+	return authenticode_compute(&img->auth_info, img->data, digest);
 }
 
 cert_table_t *
-authenticode_get_certificate_table(buffer_t *in)
+authenticode_get_certificate_table(const pecoff_image_info_t *img)
 {
-	pecoff_image_info_t img_info;
-	authenticode_image_info_t auth_info;
 	cert_table_t *result = NULL;
 
-	memset(&auth_info, 0, sizeof(auth_info));
-	memset(&img_info, 0, sizeof(img_info));
-	img_info.auth_info = &auth_info;
-
-	if (!__pecoff_process_header(in, &img_info)
-	 || !__pecoff_process_optional_header(in, &img_info)) {
-		error("PECOFF: error processing image header\n");
-		return NULL;
-	}
-
 	result = cert_table_alloc();
-	if (!__pecoff_process_certificate_table(in, &img_info, result)) {
+	if (!__pecoff_process_certificate_table(img->data, img, result)) {
 		cert_table_free(result);
 		return NULL;
 	}
@@ -712,13 +728,13 @@ authenticode_get_certificate_table(buffer_t *in)
 }
 
 buffer_t *
-authenticode_get_signer_from_buffer(buffer_t *in)
+authenticode_get_signer(const pecoff_image_info_t *img)
 {
 	cert_table_t *cert_tbl;
+	buffer_t *signer = NULL;
 	unsigned int i;
-	buffer_t *signer;
 
-	cert_tbl = authenticode_get_certificate_table(in);
+	cert_tbl = authenticode_get_certificate_table(img);
 	if (cert_tbl == NULL) {
 		error("failed to read certificate table\n");
 		return NULL;
@@ -729,24 +745,12 @@ authenticode_get_signer_from_buffer(buffer_t *in)
 
 		signer = win_cert_get_signer(cert);
 		if (signer != NULL)
-			return signer;
+			break;
 	}
 
-	error("unable to find a valid signer cert in certificate table\n");
-	return NULL;
+	if (signer == NULL)
+		error("unable to find a valid signer cert in certificate table\n");
+
+	cert_table_free(cert_tbl);
+	return signer;
 }
-
-buffer_t *
-authenticode_get_signer(const char *filename)
-{
-	buffer_t *buffer, *cert = NULL;
-
-	debug("Extracting Authenticode signer using built-in PECOFF parser\n");
-	if ((buffer = runtime_read_file(filename, 0)) != NULL) {
-		cert = authenticode_get_signer_from_buffer(buffer);
-		buffer_free(buffer);
-	}
-
-	return cert;
-}
-

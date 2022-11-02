@@ -636,36 +636,23 @@ __predictor_lookahead_efi_partition(tpm_event_t *ev, tpm_event_log_rehash_ctx_t 
 static void
 __predictor_lookahead_shim_loaded(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *ctx)
 {
-	const char *shim_partition = NULL;
 	tpm_parsed_event_t *parsed;
 
-	if (ctx->stage2_authenticode_signer)
-		return;
-
-	if (!(parsed = tpm_event_parse(ev)))
-		return;
-	shim_partition = parsed->efi_bsa_event.efi_partition;
-
 	while ((ev = ev->next) != NULL) {
-		const char *efi_partition;
-
 		if (ev->event_type != TPM2_EFI_BOOT_SERVICES_APPLICATION)
 			continue;
+
 		/* BSA events have already been parsed during the pre-scan */
 		if (!(parsed = ev->__parsed))
 			continue;
 
-		if (!(efi_partition = parsed->efi_bsa_event.efi_partition))
-			efi_partition = shim_partition;
-
-		if (efi_partition == NULL)
-			return;
+		if (!parsed->efi_bsa_event.img_info)
+			continue;
 
 		debug("Trying to extract code signing certificate from %s(%s)\n",
-				efi_partition,
+				parsed->efi_bsa_event.efi_partition,
 				parsed->efi_bsa_event.efi_application);
-		ctx->stage2_authenticode_signer = efi_application_extract_signer(efi_partition,
-				parsed->efi_bsa_event.efi_application);
+		ctx->next_stage_img = parsed->efi_bsa_event.img_info;
 		return;
 	}
 }

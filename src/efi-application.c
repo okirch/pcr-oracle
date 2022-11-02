@@ -39,7 +39,7 @@
  */
 static const tpm_evdigest_t *	__tpm_event_efi_bsa_rehash(const tpm_event_t *, const tpm_parsed_event_t *, tpm_event_log_rehash_ctx_t *);
 static bool			__tpm_event_efi_bsa_extract_location(tpm_parsed_event_t *parsed);
-
+static bool			__tpm_event_efi_bsa_inspect_image(tpm_parsed_event_t *parsed);
 
 static void
 __tpm_event_efi_bsa_destroy(tpm_parsed_event_t *parsed)
@@ -110,6 +110,7 @@ __tpm_event_parse_efi_bsa(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t 
 			assign_string(&ctx->efi_partition, evspec->efi_partition);
 		else
 			assign_string(&evspec->efi_partition, ctx->efi_partition);
+		__tpm_event_efi_bsa_inspect_image(parsed);
 	}
 
 	return true;
@@ -143,6 +144,36 @@ __tpm_event_efi_bsa_extract_location(tpm_parsed_event_t *parsed)
 			assign_string(&evspec->efi_application, filepath);
 		}
 	}
+
+	return true;
+}
+
+static bool
+__tpm_event_efi_bsa_inspect_image(tpm_parsed_event_t *parsed)
+{
+        struct efi_bsa_event *evspec = &parsed->efi_bsa_event;
+	char path[PATH_MAX];
+	const char *display_name, *fullpath;
+	file_locator_t *loc;
+
+	if (!evspec->efi_application)
+		return false;
+
+	if (evspec->efi_partition) {
+		snprintf(path, sizeof(path), "(%s)%s", evspec->efi_partition, evspec->efi_application);
+		display_name = path;
+	} else
+		display_name = evspec->efi_application;
+
+	loc = runtime_locate_file(evspec->efi_partition, evspec->efi_application);
+	if (!loc)
+		fatal("Failed to locate EFI application %s\n", display_name);
+
+	if (!(fullpath = file_locator_get_full_path(loc)))
+		return false;
+
+	if (!(evspec->img_info = pecoff_inspect(fullpath, display_name)))
+		return false;
 
 	return true;
 }
@@ -193,28 +224,27 @@ __pecoff_rehash_old(tpm_event_log_rehash_ctx_t *ctx, const char *filename)
 }
 
 static const tpm_evdigest_t *
-__pecoff_rehash_new(tpm_event_log_rehash_ctx_t *ctx, const char *filename)
+__efi_application_rehash_direct(const tpm_parsed_event_t *parsed, tpm_event_log_rehash_ctx_t *ctx)
 {
-	digest_ctx_t *digest;
+	const struct efi_bsa_event *evspec = &parsed->efi_bsa_event;
 	const tpm_evdigest_t *md;
-	buffer_t *buffer;
+	digest_ctx_t *digest;
 
 	debug("Computing authenticode digest using built-in PECOFF parser\n");
-	if (!(buffer = runtime_read_file(filename, 0)))
+	if (evspec->img_info == NULL)
 		return NULL;
 
 	digest = digest_ctx_new(ctx->algo);
 
-	md = authenticode_get_digest(buffer, digest);
+	md = authenticode_get_digest(evspec->img_info, digest);
 
-	buffer_free(buffer);
 	digest_ctx_free(digest);
 
 	return md;
 }
 
 static const tpm_evdigest_t *
-__efi_application_rehash(tpm_event_log_rehash_ctx_t *ctx, const char *device_path, const char *file_path)
+__efi_application_rehash_pesign(tpm_event_log_rehash_ctx_t *ctx, const char *device_path, const char *file_path)
 {
 	const tpm_evdigest_t *md;
 	file_locator_t *loc;
@@ -225,31 +255,23 @@ __efi_application_rehash(tpm_event_log_rehash_ctx_t *ctx, const char *device_pat
 		fatal("Failed to locate EFI application (%s)%s", device_path, file_path);
 
 	fullpath = file_locator_get_full_path(loc);
-	if (ctx->use_pesign) {
-		md = __pecoff_rehash_old(ctx, fullpath);
-	} else {
-		md = __pecoff_rehash_new(ctx, fullpath);
-	}
-
+	md = __pecoff_rehash_old(ctx, fullpath);
 	file_locator_free(loc);
 
 	return md;
 }
 
 buffer_t *
-efi_application_extract_signer(const char *device_path, const char *file_path)
+efi_application_extract_signer(const tpm_parsed_event_t *parsed)
 {
-	buffer_t *result = NULL;
-	file_locator_t *loc;
+	const struct efi_bsa_event *evspec = &parsed->efi_bsa_event;
 
-	loc = runtime_locate_file(device_path, file_path);
-	if (!loc)
-		fatal("Failed to locate EFI application (%s)%s", device_path, file_path);
+	if (evspec->img_info == NULL) {
+		debug("%s: cannot extract signer, no image info for this application\n", __func__);
+		return NULL;
+	}
 
-	result = authenticode_get_signer(file_locator_get_full_path(loc));
-	file_locator_free(loc);
-
-	return result;
+	return authenticode_get_signer(evspec->img_info);
 }
 
 static const tpm_evdigest_t *
@@ -266,5 +288,8 @@ __tpm_event_efi_bsa_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *pars
 		return tpm_event_get_digest(ev, ctx->algo->openssl_name);
 	}
 
-	return __efi_application_rehash(ctx, evspec->efi_partition, evspec->efi_application);
+	if (ctx->use_pesign)
+		return __efi_application_rehash_pesign(ctx, evspec->efi_partition, evspec->efi_application);
+
+	return __efi_application_rehash_direct(parsed, ctx);
 }
