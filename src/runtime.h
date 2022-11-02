@@ -27,6 +27,7 @@
 #define RUNTIME_MISSING_FILE_OKAY	0x0002
 
 typedef struct file_locator	file_locator_t;
+typedef struct block_dev_io	block_dev_io_t;
 
 extern file_locator_t *	runtime_locate_file(const char *fs_dev, const char *path);
 extern void		file_locator_free(file_locator_t *);
@@ -35,14 +36,10 @@ extern buffer_t *	runtime_read_file(const char *pathname, int flags);
 extern buffer_t *	runtime_read_efi_variable(const char *var_name);
 extern char *		runtime_disk_for_partition(const char *part_dev);
 extern char *		runtime_blockdev_by_partuuid(const char *uuid);
-extern int		runtime_blockdev_open(const char *dev);
-extern buffer_t *	runtime_blockdev_read_lba(int fd, unsigned int block, unsigned int count);
+extern block_dev_io_t *	runtime_blockdev_open(const char *dev);
+extern buffer_t *	runtime_blockdev_read_lba(block_dev_io_t *, unsigned int block, unsigned int count);
+extern void		runtime_blockdev_close(block_dev_io_t *);
 
-static inline unsigned int
-runtime_blockdev_bytes_to_sectors(unsigned int size)
-{
-	/* hard coding sector size for now */
-	return (size + 511) / 512;
-}
+extern unsigned int	runtime_blockdev_bytes_to_sectors(const block_dev_io_t *, unsigned int size);
 
 #endif /* RUNTIME_H */

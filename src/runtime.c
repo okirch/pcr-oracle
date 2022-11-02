@@ -41,6 +41,11 @@ struct file_locator {
 	char *		full_path;
 };
 
+struct block_dev_io {
+	int		fd;
+	unsigned int	sector_size;
+};
+
 file_locator_t *
 runtime_locate_file(const char *device_path, const char *file_path)
 {
@@ -113,7 +118,6 @@ __system_read_file(const char *filename, int flags)
 	int count;
 	int fd;
 
-	debug("Reading %s\n", filename);
 	if ((fd = open(filename, O_RDONLY)) < 0) {
 		if (errno == ENOENT && (flags & RUNTIME_MISSING_FILE_OKAY))
 			return NULL;
@@ -241,29 +245,52 @@ runtime_blockdev_by_partuuid(const char *uuid)
 	return realpath(pathbuf, NULL);
 }
 
-int
+block_dev_io_t *
 runtime_blockdev_open(const char *dev)
 {
-	return open(dev, O_RDONLY);
+	block_dev_io_t *io;
+	int fd;
+
+	if ((fd = open(dev, O_RDONLY)) < 0)
+		return NULL;
+
+	io = calloc(1, sizeof(*io));
+	io->fd = fd;
+	io->sector_size = 512;
+
+	return io;
+}
+
+void
+runtime_blockdev_close(block_dev_io_t *io)
+{
+	close(io->fd);
+	io->fd = -1;
+	free(io);
+}
+
+unsigned int
+runtime_blockdev_bytes_to_sectors(const block_dev_io_t *io, unsigned int size)
+{
+	return (size + io->sector_size - 1) / io->sector_size;
 }
 
 buffer_t *
-runtime_blockdev_read_lba(int fd, unsigned int block, unsigned int count)
+runtime_blockdev_read_lba(block_dev_io_t *io, unsigned int block, unsigned int count)
 {
-	static const unsigned int sector_size = 512;
 	unsigned int bytes;
 	buffer_t *result;
 	int n;
 
-	if (lseek(fd, block * sector_size, SEEK_SET) < 0) {
+	if (lseek(io->fd, block * io->sector_size, SEEK_SET) < 0) {
 		error("block dev seek: %m\n");
 		return NULL;
 	}
 
-	bytes = sector_size * count;
+	bytes = io->sector_size * count;
 
 	result = buffer_alloc_write(bytes);
-	n = read(fd, buffer_write_pointer(result), bytes);
+	n = read(io->fd, buffer_write_pointer(result), bytes);
 	if (n < 0) {
 		error("block dev read: %m\n");
 		goto failed;

@@ -69,9 +69,9 @@ __tpm_event_efi_gpt_rebuild(const char *device)
 	unsigned char gpt_sig[8];
 	uint32_t gpt_hdr_len, gpt_num_entries, gpt_entry_size;
 	unsigned int num_tbl_bytes, i, num_valid_entries;
-	int fd = -1;
+	block_dev_io_t *fd;
 
-	if ((fd = runtime_blockdev_open(device)) < 0) {
+	if ((fd = runtime_blockdev_open(device)) == NULL) {
 		error("Unable to open disk device %s: %m\n", device);
 		goto failed;
 	}
@@ -108,7 +108,7 @@ __tpm_event_efi_gpt_rebuild(const char *device)
 	buffer_put(result, hdr_base_addr, gpt_hdr_len);
 	buffer_free(buffer);
 
-	if (!(buffer = runtime_blockdev_read_lba(fd, 2, runtime_blockdev_bytes_to_sectors(num_tbl_bytes)))) {
+	if (!(buffer = runtime_blockdev_read_lba(fd, 2, runtime_blockdev_bytes_to_sectors(fd, num_tbl_bytes)))) {
 		error("%s: unable to read GPT sector\n", device);
 		goto failed;
 	}
@@ -143,7 +143,7 @@ __tpm_event_efi_gpt_rebuild(const char *device)
 
 out:
 	if (fd >= 0)
-		close(fd);
+		runtime_blockdev_close(fd);
 	if (buffer)
 		buffer_free(buffer);
 	return result;
