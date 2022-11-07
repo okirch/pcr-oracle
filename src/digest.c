@@ -18,6 +18,7 @@
  * Written by Olaf Kirch <okir@suse.com>
  */
 
+#include <openssl/x509.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -50,6 +51,10 @@ static tpm_algo_info_t		tpm_algorithms[TPM2_ALG_MAX] = {
 	DESCRIBE_ALGO(sha256,		32),
 	DESCRIBE_ALGO(sha384,		48),
 	DESCRIBE_ALGO(sha512,		64),
+};
+
+struct parsed_cert {
+	X509 *		x;
 };
 
 const tpm_algo_info_t *
@@ -262,6 +267,109 @@ digest_ctx_free(digest_ctx_t *ctx)
 	(void) digest_ctx_final(ctx, NULL);
 
 	free(ctx);
+}
+
+/*
+ * Information hiding for X509 certs
+ */
+static parsed_cert_t *
+parsed_cert_alloc(X509 *x)
+{
+	parsed_cert_t *cert;
+
+	cert = calloc(1, sizeof(*cert));
+	cert->x = x;
+	return cert;
+}
+
+void
+parsed_cert_free(parsed_cert_t *cert)
+{
+	X509_free(cert->x);
+	free(cert);
+}
+
+static const char *
+ossl_cert_subject(const X509 *x)
+{
+	static char namebuf[128];
+	X509_NAME *name;
+
+	if (x == NULL)
+		return NULL;
+
+	if ((name = X509_get_subject_name(x)) == NULL)
+		return NULL;
+
+	return X509_NAME_oneline(name, namebuf, sizeof(namebuf));
+}
+
+static const char *
+ossl_cert_issuer(const X509 *x)
+{
+	static char namebuf[128];
+	X509_NAME *name;
+
+	if (x == NULL)
+		return NULL;
+
+	if ((name = X509_get_issuer_name(x)) == NULL)
+		return NULL;
+
+	return X509_NAME_oneline(name, namebuf, sizeof(namebuf));
+}
+
+bool
+ossl_cert_issued_by(X509 *x, X509 *potential_issuer)
+{
+	X509_NAME *subject, *issuer;
+
+	if (X509_issuer_name_hash(x) != X509_subject_name_hash(potential_issuer))
+		return false;
+
+	if ((issuer = X509_get_issuer_name(x)) == NULL
+	 || (subject = X509_get_subject_name(potential_issuer)) == NULL)
+		return false;
+
+	if (X509_NAME_cmp(issuer, subject) != 0)
+		return false;
+
+	/* FIXME: we may want to make sure this is really the correct cert by
+	 * checking the signature. However, we're not doing a real pkcs7 verification
+	 * here, we just want to know which cert the shim used to accept the 2nd
+	 * stage loader. Right now, this is not very complex so maybe we're fine
+	 * with this somewhat simplistic approach. */
+
+	return true;
+}
+
+const char *
+parsed_cert_subject(const parsed_cert_t *cert)
+{
+	return ossl_cert_subject(cert->x);
+}
+
+const char *
+parsed_cert_issuer(const parsed_cert_t *cert)
+{
+	return ossl_cert_issuer(cert->x);
+}
+
+bool
+parsed_cert_issued_by(const parsed_cert_t *cert, const parsed_cert_t *potential_issuer)
+{
+	return ossl_cert_issued_by(cert->x, potential_issuer->x);
+}
+
+parsed_cert_t *
+cert_parse(const buffer_t *bp)
+{
+	const unsigned char *rptr = buffer_read_pointer(bp);
+	X509 *x = NULL;
+
+	if (!d2i_X509(&x, &rptr, buffer_available(bp)))
+		return NULL;
+	return parsed_cert_alloc(x);
 }
 
 /*

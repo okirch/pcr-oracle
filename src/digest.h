@@ -75,4 +75,10 @@ extern const tpm_algo_info_t *	__digest_by_tpm_alg(unsigned int, const tpm_algo_
 extern void			cert_table_free(cert_table_t *);
 extern buffer_t *		pkcs7_extract_signer(buffer_t *);
 
+extern parsed_cert_t *		cert_parse(const buffer_t *);
+extern void			parsed_cert_free(parsed_cert_t *);
+extern const char *		parsed_cert_subject(const parsed_cert_t *);
+extern const char *		parsed_cert_issuer(const parsed_cert_t *);
+extern bool			parsed_cert_issued_by(const parsed_cert_t *cert, const parsed_cert_t *potential_issuer);
+
 #endif /* DIGEST_H */
