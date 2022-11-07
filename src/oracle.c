@@ -347,7 +347,8 @@ pcr_bank_init_from_current(tpm_pcr_bank_t *bank)
 			fprintf(recording, "%02u sha256 %s\n", i, digest_print_value(pcr));
 	}
 
-	fclose(recording);
+	if (recording)
+		fclose(recording);
 }
 
 static void
