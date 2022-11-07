@@ -94,6 +94,44 @@ enum {
 	HASH_STRATEGY_DATA,
 };
 
+static buffer_t *
+efi_variable_authority_get_record(const tpm_parsed_event_t *parsed, const char *var_name, tpm_event_log_rehash_ctx_t *ctx)
+{
+	const char *var_short_name = parsed->efi_variable_event.variable_name;
+	parsed_cert_t *signer;
+	const char *db_name = NULL;
+	buffer_t *result;
+
+	if (!strcmp(var_short_name, "Shim")) {
+		db_name = "shim-vendor-cert";
+	} else
+	if (!strcmp(var_short_name, "db")) {
+		db_name = "db";
+	} else
+	if (!strcmp(var_short_name, "MokListRT")) {
+		db_name = "MokList";
+	} else {
+		/* Read as-is (this could be SbatLevel, or some other variable that's not
+		 * a signature db). */
+		return runtime_read_efi_variable(var_name);
+	}
+
+	if (ctx->next_stage_img == NULL) {
+		error("Sorry, no image info for next stage boot loader\n");
+		return NULL;
+	}
+
+	signer = authenticode_get_signer(ctx->next_stage_img);
+	if (signer == NULL)
+		return NULL;
+
+	debug("Next stage application was signed by %s\n", parsed_cert_subject(signer));
+	result = efi_application_locate_authority_record(db_name, signer);
+	parsed_cert_free(signer);
+
+	return result;
+}
+
 static const tpm_evdigest_t *
 __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *parsed, tpm_event_log_rehash_ctx_t *ctx)
 {
@@ -133,21 +171,11 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 		}
 	}
 
-	if (ev->event_type == TPM2_EFI_VARIABLE_AUTHORITY
-	 && !strcmp(parsed->efi_variable_event.variable_name, "Shim")) {
-		parsed_cert_t *signer;
-
-		if (ctx->next_stage_img == NULL) {
-			error("Sorry, no image info for next stage boot loader\n");
-			goto out;
-		}
-
-		signer = efi_application_extract_signer(parsed);
-		if (signer != NULL) {
-			debug("Application was signed by %s\n", parsed_cert_subject(signer));
-			file_data = efi_application_locate_authority_record("shim-vendor-cert", signer);
-			parsed_cert_free(signer);
-		}
+	if (ev->event_type == TPM2_EFI_VARIABLE_AUTHORITY) {
+		/* For certificate related variables, EFI_VARIABLE_AUTHORITY events don't return the
+		 * entire DB, but only the record that was used in verifying the application's
+		 * authenticode signature. */
+		file_data = efi_variable_authority_get_record(parsed, var_name, ctx);
 	} else {
 		file_data = runtime_read_efi_variable(var_name);
 	}
