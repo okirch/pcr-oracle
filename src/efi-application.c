@@ -293,3 +293,178 @@ __tpm_event_efi_bsa_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *pars
 
 	return __efi_application_rehash_direct(parsed, ctx);
 }
+
+#define EFI_MAX_SIGNATURES	16
+
+typedef struct efi_signature_data {
+	unsigned char		owner[16];
+	unsigned int		len;
+	const unsigned char *	data;
+	unsigned int		raw_len;
+	const unsigned char *	raw_data;
+} efi_signature_data_t;
+
+typedef struct efi_signature_list {
+	unsigned char		type[16];
+	uint32_t		list_size;
+	uint32_t		header_size;
+	uint32_t		signature_size;
+	const unsigned char *	header;
+
+	unsigned int		num_signatures;
+	efi_signature_data_t	signatures[EFI_MAX_SIGNATURES];
+} efi_signature_list_t;
+
+static bool
+__efi_signature_data_parse(buffer_t *bp, unsigned int sig_size, efi_signature_data_t *result)
+{
+	memset(result, 0, sizeof(*result));
+	result->raw_data = buffer_read_pointer(bp);
+	result->raw_len = sig_size;
+	if (!buffer_get(bp, result->owner, sizeof(result->owner)))
+		return false;
+
+	result->data = buffer_read_pointer(bp);
+	result->len = sig_size - 16;
+	if (!buffer_skip(bp, sig_size - 16))
+		return false;
+
+	return true;
+}
+
+static bool
+__efi_signature_list_parse(buffer_t *db_data, unsigned int list_num, efi_signature_list_t *result)
+{
+	unsigned int payload_size, i;
+	buffer_t list;
+
+	memset(result, 0, sizeof(*result));
+
+	debug2("Parsing list %u:\n");
+	hexdump(buffer_read_pointer(db_data), 28, debug2, 8);
+
+	if (!buffer_get(db_data, result->type, sizeof(result->type))
+	 || !buffer_get_u32le(db_data, &result->list_size)
+	 || !buffer_get_u32le(db_data, &result->header_size)
+	 || !buffer_get_u32le(db_data, &result->signature_size))
+		return false;
+
+	if (result->header_size) {
+		if (result->header_size >= result->list_size) {
+			error("%s: list entry header too large (list_size=%u, header_size=%u)\n",
+					__func__, result->list_size, result->header_size);
+			return false;
+		}
+		result->header = buffer_read_pointer(db_data);
+		if (!buffer_skip(db_data, result->header_size))
+			return false;
+	}
+
+	if (result->signature_size == 0) {
+		error("%s: signature list with signature_size 0\n", __func__);
+		return false;
+	}
+
+	/* Compute the size of the signatures[] array */
+	payload_size = result->list_size - 16 - 3 * 4 - result->header_size;
+
+	if (!buffer_get_buffer(db_data, payload_size, &list)) {
+		error("%s: list entry too large (list_size=%u)\n", __func__, result->list_size);
+		return false;
+	}
+
+	result->num_signatures = payload_size / result->signature_size;
+	if (result->num_signatures * result->signature_size != payload_size) {
+		error("%s: entry with odd signatures[] array (%u is not a multiple of sig size %u)\n",
+				__func__, payload_size, result->signature_size);
+		return false;
+	}
+
+	for (i = 0; i < result->num_signatures; ++i) {
+		if (!__efi_signature_data_parse(&list, result->signature_size, &result->signatures[i])) {
+			error("%s: unable to parse signature %u of list %u\n", __func__, i, list_num);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+buffer_t *
+efi_application_locate_authority_record(const char *db_name, const parsed_cert_t *signer)
+{
+	const char *var_name = NULL;
+	buffer_t *db_data;
+	buffer_t *result = NULL;
+	unsigned int list_num = 0;
+
+	if (!strcmp(db_name, "db"))
+		var_name = "db-d719b2cb-3d3a-4596-a3bc-dad00e67656f";
+	else
+	if (!strcmp(db_name, "MokList"))
+		var_name = "MokListRT-605dab50-e046-4300-abb6-3dd810dd8b23";
+	else {
+		error("%s: unknown authority db %s\n", __func__, db_name);
+		return NULL;
+	}
+
+	if (opt_debug > 1) {
+		debug2("Looking for signing authority in %s\n", var_name);
+		debug2("  subject %s\n", parsed_cert_subject(signer));
+		debug2("  issuer  %s\n", parsed_cert_issuer(signer));
+	}
+
+	if (!(db_data = runtime_read_efi_variable(var_name)))
+		return NULL;
+
+	while (buffer_available(db_data) != 0) {
+		static unsigned char efi_cert_x509_guid[] = {
+			0xa1, 0x59, 0xc0, 0xa5, 0xe4, 0x94, 0xa7, 0x4a,
+			0x87, 0xb5, 0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72 };
+		efi_signature_list_t sig_list;
+		unsigned int i;
+
+		if (!__efi_signature_list_parse(db_data, list_num, &sig_list)) {
+			error("%s: unable to parse signature list %u in %s\n", __func__, list_num, var_name);
+			goto out;
+		}
+
+		if (memcmp(sig_list.type, efi_cert_x509_guid, 16)) {
+			debug(" %u ignoring signature list with type %s\n", list_num, tpm_event_decode_uuid(sig_list.type));
+			continue;
+		}
+
+		debug2(" %u inspecting X.509 signature list\n", list_num, tpm_event_decode_uuid(sig_list.type));
+		for (i = 0; i < sig_list.num_signatures; ++i) {
+			efi_signature_data_t *sig_data = &sig_list.signatures[i];
+			parsed_cert_t *authority;
+			buffer_t cert_buf;
+
+			buffer_init_read(&cert_buf, (void *) sig_data->data, sig_data->len);
+
+			if (!(authority = cert_parse(&cert_buf))) {
+				error("Unparseable X509 certificate in %s\n", var_name);
+				continue;
+			}
+
+			debug2(" %u.%u: owner %s\n", list_num, i, tpm_event_decode_uuid(sig_data->owner));
+			debug2("    cert subject: %s\n", parsed_cert_subject(authority));
+
+			if (parsed_cert_issued_by(signer, authority)) {
+				debug("Found authority record for %s\n", parsed_cert_subject(authority));
+				result = buffer_alloc_write(sig_data->raw_len);
+				buffer_put(result, sig_data->raw_data, sig_data->raw_len);
+				parsed_cert_free(authority);
+				break;
+			}
+
+			parsed_cert_free(authority);
+		}
+
+		list_num++;
+	}
+
+out:
+	buffer_free(db_data);
+	return result;
+}
