@@ -43,6 +43,19 @@ debug(const char *fmt, ...)
 }
 
 static inline void
+debug2(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (opt_debug > 1) {
+		va_start(ap, fmt);
+		fprintf(stderr, "::: ");
+		vfprintf(stderr, fmt, ap);
+		va_end(ap);
+	}
+}
+
+static inline void
 error(const char *fmt, ...)
 {
 	va_list ap;
