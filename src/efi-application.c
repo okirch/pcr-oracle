@@ -390,6 +390,45 @@ __efi_signature_list_parse(buffer_t *db_data, unsigned int list_num, efi_signatu
 	return true;
 }
 
+static buffer_t *
+efi_application_locate_and_check_shim_vendor_cert(const parsed_cert_t *signer)
+{
+	buffer_t *der_cert;
+	parsed_cert_t *authority = NULL;
+
+	if (!(der_cert = platform_read_shim_vendor_cert())) {
+		error("Cannot locate authority record - please implement platform_read_shim_vendor_cert()\n");
+		return NULL;
+	}
+
+	if (!(authority = cert_parse(der_cert))) {
+		error("Unparseable X509 shim vendor certificate\n");
+		goto failed;
+	}
+
+	if (!parsed_cert_issued_by(signer, authority)) {
+		error("Next stage loader not signed by shim vendor.\n");
+		parsed_cert_free(authority);
+		goto failed;
+	}
+
+	debug("Returning CA certificate %s\n", parsed_cert_subject(authority));
+	parsed_cert_free(authority);
+
+	/* In many cases, VARIABLE_AUTHORITY will use the authority record from db or
+	 * MokList (which includes the owner GUID). The shim loader does not do this when
+	 * checking the signature against its built-in vendor certificiate.
+	 * Yes, things would be much easier if the shim would actually export its vendor
+	 * cert in a UEFI variable, but it does not do this yet.
+	 */
+
+	return der_cert;
+
+failed:
+	buffer_free(der_cert);
+	return NULL;
+}
+
 buffer_t *
 efi_application_locate_authority_record(const char *db_name, const parsed_cert_t *signer)
 {
@@ -397,6 +436,11 @@ efi_application_locate_authority_record(const char *db_name, const parsed_cert_t
 	buffer_t *db_data;
 	buffer_t *result = NULL;
 	unsigned int list_num = 0;
+
+	/* This is a special case. The shim does not consult any regular certificate lists
+	 * but checks its built-in vendor cert. */
+	if (!strcmp(db_name, "shim-vendor-cert"))
+		return efi_application_locate_and_check_shim_vendor_cert(signer);
 
 	if (!strcmp(db_name, "db"))
 		var_name = "db-d719b2cb-3d3a-4596-a3bc-dad00e67656f";

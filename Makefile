@@ -17,6 +17,7 @@ ORACLE_SRCS	= oracle.c \
 		  runtime.c \
 		  authenticode.c \
 		  ima.c \
+		  platform.c \
 		  testcase.c \
 		  util.c
 ORACLE_OBJS	= $(addprefix build/,$(patsubst %.c,%.o,$(ORACLE_SRCS)))

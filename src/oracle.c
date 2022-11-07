@@ -688,7 +688,7 @@ __predictor_lookahead_shim_loaded(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *c
 			signer = efi_application_extract_signer(parsed);
 			if (signer != NULL) {
 				debug("Application was signed by %s\n", parsed_cert_subject(signer));
-				record = efi_application_locate_authority_record("MokList", signer);
+				record = efi_application_locate_authority_record("shim-vendor-cert", signer);
 				buffer_free(record);
 			}
 		}

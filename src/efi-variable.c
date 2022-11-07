@@ -133,7 +133,8 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 		}
 	}
 
-	if (!strcmp(parsed->efi_variable_event.variable_name, "Shim")) {
+	if (ev->event_type == TPM2_EFI_VARIABLE_AUTHORITY
+	 && !strcmp(parsed->efi_variable_event.variable_name, "Shim")) {
 		parsed_cert_t *signer;
 
 		if (ctx->next_stage_img == NULL) {
@@ -144,7 +145,7 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 		signer = efi_application_extract_signer(parsed);
 		if (signer != NULL) {
 			debug("Application was signed by %s\n", parsed_cert_subject(signer));
-			file_data = efi_application_locate_authority_record("db", signer);
+			file_data = efi_application_locate_authority_record("shim-vendor-cert", signer);
 			parsed_cert_free(signer);
 		}
 	} else {

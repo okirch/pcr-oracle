@@ -24,6 +24,7 @@
 #include "types.h"
 
 extern bool		ima_is_active(void);
+extern buffer_t *	platform_read_shim_vendor_cert(void);
 
 #endif /* PCR_ORACLE_H */
 
