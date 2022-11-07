@@ -134,12 +134,19 @@ __tpm_event_efi_variable_rehash(const tpm_event_t *ev, const tpm_parsed_event_t 
 	}
 
 	if (!strcmp(parsed->efi_variable_event.variable_name, "Shim")) {
+		parsed_cert_t *signer;
+
 		if (ctx->next_stage_img == NULL) {
 			error("Sorry, no image info for next stage boot loader\n");
 			goto out;
 		}
 
-		file_data = authenticode_get_signer(ctx->next_stage_img);
+		signer = efi_application_extract_signer(parsed);
+		if (signer != NULL) {
+			debug("Application was signed by %s\n", parsed_cert_subject(signer));
+			file_data = efi_application_locate_authority_record("db", signer);
+			parsed_cert_free(signer);
+		}
 	} else {
 		file_data = runtime_read_efi_variable(var_name);
 	}

@@ -675,10 +675,25 @@ __predictor_lookahead_shim_loaded(tpm_event_t *ev, tpm_event_log_rehash_ctx_t *c
 		if (!parsed->efi_bsa_event.img_info)
 			continue;
 
-		debug("Trying to extract code signing certificate from %s(%s)\n",
+		debug("Inspecting EFI application %s(%s)\n",
 				parsed->efi_bsa_event.efi_partition,
 				parsed->efi_bsa_event.efi_application);
 		ctx->next_stage_img = parsed->efi_bsa_event.img_info;
+
+#ifdef TESTING_ONLY
+		if (ctx->next_stage_img) {
+			parsed_cert_t *signer;
+			buffer_t *record;
+
+			signer = efi_application_extract_signer(parsed);
+			if (signer != NULL) {
+				debug("Application was signed by %s\n", parsed_cert_subject(signer));
+				record = efi_application_locate_authority_record("MokList", signer);
+				buffer_free(record);
+			}
+		}
+#endif
+
 		return;
 	}
 }

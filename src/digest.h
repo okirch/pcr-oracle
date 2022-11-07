@@ -73,7 +73,7 @@ extern const tpm_evdigest_t *	digest_from_file(const tpm_algo_info_t *algo_info,
 extern const tpm_algo_info_t *	__digest_by_tpm_alg(unsigned int, const tpm_algo_info_t *, unsigned int);
 
 extern void			cert_table_free(cert_table_t *);
-extern buffer_t *		pkcs7_extract_signer(buffer_t *);
+extern parsed_cert_t *		pkcs7_extract_signer(buffer_t *);
 
 extern parsed_cert_t *		cert_parse(const buffer_t *);
 extern void			parsed_cert_free(parsed_cert_t *);

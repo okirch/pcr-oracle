@@ -378,7 +378,7 @@ cert_parse(const buffer_t *bp)
 #include <openssl/pkcs7.h>
 #include <openssl/x509.h>
 
-static buffer_t *
+static inline buffer_t *
 x509_as_buffer(X509 *x509)
 {
 	unsigned char *der = NULL;
@@ -396,15 +396,15 @@ x509_as_buffer(X509 *x509)
 	return bp;
 }
 
-buffer_t *
+parsed_cert_t *
 pkcs7_extract_signer(buffer_t *data)
 {
+	parsed_cert_t *result = NULL;
 	const unsigned char *raw_data;
 	unsigned int raw_len;
 	PKCS7 *p7 = NULL;
 	STACK_OF(X509) *chain;
 	X509 *x509;
-	buffer_t *bp = NULL;
 
 	raw_data = buffer_read_pointer(data);
 	raw_len = buffer_available(data);
@@ -432,12 +432,10 @@ pkcs7_extract_signer(buffer_t *data)
 		goto out;
 	}
 
-	debug("Extracted an X.509 certificate. Yay!\n");
-	if (!(bp = x509_as_buffer(x509)))
-		error("Failed to DER encode X.509 certificate\n");
+	result = parsed_cert_alloc(X509_dup(x509));
 
 out:
 	if (p7)
 		PKCS7_free(p7);
-	return bp;
+	return result;
 }

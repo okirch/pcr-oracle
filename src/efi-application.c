@@ -261,7 +261,7 @@ __efi_application_rehash_pesign(tpm_event_log_rehash_ctx_t *ctx, const char *dev
 	return md;
 }
 
-buffer_t *
+parsed_cert_t *
 efi_application_extract_signer(const tpm_parsed_event_t *parsed)
 {
 	const struct efi_bsa_event *evspec = &parsed->efi_bsa_event;

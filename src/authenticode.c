@@ -556,7 +556,7 @@ win_cert_alloc(int type, buffer_t *blob)
 	return cert;
 }
 
-static buffer_t *
+static parsed_cert_t *
 win_cert_get_signer(win_cert_t *cert)
 {
 	if (cert->type != WIN_CERT_TYPE_AUTH) {
@@ -723,11 +723,11 @@ authenticode_get_certificate_table(const pecoff_image_info_t *img)
 	return result;
 }
 
-buffer_t *
+parsed_cert_t *
 authenticode_get_signer(const pecoff_image_info_t *img)
 {
 	cert_table_t *cert_tbl;
-	buffer_t *signer = NULL;
+	parsed_cert_t *signer = NULL;
 	unsigned int i;
 
 	cert_tbl = authenticode_get_certificate_table(img);

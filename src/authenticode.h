@@ -27,7 +27,7 @@ extern pecoff_image_info_t *pecoff_inspect(buffer_t *img_data, const char *displ
 extern void		pecoff_image_info_free(pecoff_image_info_t *);
 extern tpm_evdigest_t *	authenticode_get_digest(pecoff_image_info_t *, digest_ctx_t *);
 extern cert_table_t *	authenticode_get_certificate_table(const pecoff_image_info_t *img);
-extern buffer_t *	authenticode_get_signer(const pecoff_image_info_t *);
+extern parsed_cert_t *	authenticode_get_signer(const pecoff_image_info_t *);
 
 #endif /* AUTHENTICODE_H */
 
