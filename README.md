@@ -56,3 +56,31 @@ By writing the output in binary format, the `pcr.state` file generated
 by this example can be used directly with the --pcr option of
 `tpm2_policypcr`.
 
+## Generate and submit test cases
+
+The UEFI spec is large and complex, so writing a UEFI Firmware is
+without doubt a daunting task. And not surprisingly, firmwares sometimes
+do not adhere to the spec 100%. Which is why a tool like this needs
+to detect such issues, and handle them gracefully.
+
+In order to keep regressions to a minimum, need to build a
+collection of test cases that covers a broad range of vendors and
+system configurations.
+
+You can contribute to this collection by submitting a test case!
+Simply run the following commands:
+
+    pcr-oracle --from eventlog all --verify current -d \
+    	--create-testcase /tmp/pcr-oracle.test
+    tar cjf /tmp/pcr-oracle.test.tar.bz2 /tmp/pcr-oracle.test
+
+Submit your test case as a github issue to the pcr-oracle project,
+or send it to me via email.
+
+If you're curious, you can also re-run your own test case using
+this command:
+
+    pcr-oracle --from eventlog all --verify current -d \
+    	--replay-testcase /tmp/pcr-oracle.test
+
+Thank you!
