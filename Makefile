@@ -41,6 +41,6 @@ build/%.o: src/%.c
 
 dist:
 	mkdir -p $(PKGNAME)
-	cp -a Makefile src firstboot $(PKGNAME)
+	cp -a Makefile README.md src $(PKGNAME)
 	tar cvjf $(PKGNAME).tar.bz2 $(PKGNAME)/*
 	rm -rf $(PKGNAME)
