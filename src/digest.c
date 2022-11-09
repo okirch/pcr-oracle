@@ -222,6 +222,8 @@ digest_ctx_new(const tpm_algo_info_t *algo_info)
 		return NULL;
 	}
 
+	assert(EVP_MD_size(evp_md) == algo_info->digest_size);
+
 	ctx = calloc(1, sizeof(*ctx));
 	ctx->mdctx = EVP_MD_CTX_new();
 	EVP_DigestInit_ex(ctx->mdctx, evp_md, NULL);

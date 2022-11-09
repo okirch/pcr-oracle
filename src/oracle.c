@@ -18,7 +18,6 @@
  * Written by Olaf Kirch <okir@suse.com>
  */
 
-#include <openssl/evp.h>
 #include <getopt.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -49,7 +48,6 @@ struct predictor {
 
 	const char *		algo;
 	const tpm_algo_info_t *	algo_info;
-	const EVP_MD *		md;
 
 	tpm_event_t *		event_log;
 	struct {
@@ -205,16 +203,9 @@ predictor_new(unsigned int pcr_mask, const char *source, const char *algo_name, 
 	pred->initial_source = source;
 
 	pred->algo = algo_name? : "sha256";
-	pred->md = EVP_get_digestbyname(pred->algo);
-	if (pred->md == NULL) {
-		fprintf(stderr, "Unknown message digest %s\n", pred->algo);
-		usage(1, NULL);
-	}
-
 	pred->algo_info = digest_by_name(pred->algo);
 	if (pred->algo_info == NULL)
 		fatal("Digest algorithm %s not implemented\n");
-	assert(EVP_MD_size(pred->md) == pred->algo_info->digest_size);
 
 	if (!output_format || !strcasecmp(output_format, "plain"))
 		pred->report_fn = predictor_report_plain;
