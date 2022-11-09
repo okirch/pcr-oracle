@@ -815,7 +815,6 @@ predictor_update_eventlog(struct predictor *pred)
 {
 	tpm_event_log_rehash_ctx_t rehash_ctx;
 	tpm_event_t *ev, *stop_event = NULL;
-	int ev_count = 0;
 
 	predictor_pre_scan_eventlog(pred, &stop_event);
 
@@ -825,8 +824,6 @@ predictor_update_eventlog(struct predictor *pred)
 	for (ev = pred->event_log; ev; ev = ev->next) {
 		tpm_evdigest_t *pcr;
 		bool stop = false;
-
-		ev_count++;
 
 		stop = (ev == stop_event);
 		if (stop && !pred->stop_event.after) {
@@ -865,7 +862,7 @@ predictor_update_eventlog(struct predictor *pred)
 				/* Skip non-StartupLocality, non-PCR0, and non-first
 				 * NO_ACTION events */
 				if (ev->event_size != sizeof(tpm_startup_event_t) ||
-				    ev->pcr_index != 0 || ev_count != 1)
+				    ev->pcr_index != 0 || ev->event_index != 1)
 					continue;
 
 				startup = (tpm_startup_event_t *)(ev->event_data);

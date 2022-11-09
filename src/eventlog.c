@@ -176,9 +176,11 @@ event_log_read_next(tpm_event_log_reader_t *log)
 {
 	tpm_event_t *ev;
 	uint32_t event_size;
+	unsigned int count = 0;
 
 again:
 	ev = calloc(1, sizeof(*ev));
+
 	if (!__read_u32le_or_eof(log->fd, &ev->pcr_index)) {
 		free(ev);
 		return NULL;
@@ -215,6 +217,7 @@ again:
 		goto again;
 	}
 
+	ev->event_index = count++;
 	return ev;
 }
 

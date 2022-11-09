@@ -27,6 +27,8 @@
 typedef struct tpm_event {
 	struct tpm_event *	next;
 
+	unsigned int		event_index;
+
 	long			file_offset;
 	struct tpm_parsed_event *__parsed;
 
