@@ -22,10 +22,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdarg.h>
-#include <assert.h>
 #include <ctype.h>
-#include <tss2_fapi.h>
 
 #include "oracle.h"
 #include "util.h"
