@@ -499,6 +499,26 @@ predictor_set_stop_event(struct predictor *pred, const char *event_desc, bool af
 }
 
 static void
+pcr_bank_set_locality(struct predictor *pred, unsigned int pcr_index, const uint8_t locality)
+{
+	tpm_pcr_bank_t *bank;
+	tpm_evdigest_t *pcr;
+
+	bank = &pred->prediction;
+
+	if (!pcr_bank_register_is_valid(bank, pcr_index)) {
+		error("Unable to extend PCR %s:%u: register was not initialized\n",
+				bank->algo_name, pcr_index);
+		return;
+	}
+
+	pcr = &bank->pcr[pcr_index];
+
+	memset(pcr->data, 0, pcr->size);
+	pcr->data[pcr->size-1] = locality;
+}
+
+static void
 pcr_bank_extend_register(tpm_pcr_bank_t *bank, unsigned int pcr_index, const tpm_evdigest_t *d)
 {
 	tpm_evdigest_t *pcr;
@@ -795,6 +815,7 @@ predictor_update_eventlog(struct predictor *pred)
 {
 	tpm_event_log_rehash_ctx_t rehash_ctx;
 	tpm_event_t *ev, *stop_event = NULL;
+	int ev_count = 0;
 
 	predictor_pre_scan_eventlog(pred, &stop_event);
 
@@ -804,6 +825,8 @@ predictor_update_eventlog(struct predictor *pred)
 	for (ev = pred->event_log; ev; ev = ev->next) {
 		tpm_evdigest_t *pcr;
 		bool stop = false;
+
+		ev_count++;
 
 		stop = (ev == stop_event);
 		if (stop && !pred->stop_event.after) {
@@ -834,6 +857,25 @@ predictor_update_eventlog(struct predictor *pred)
 					debug("  Old digest: %s\n", digest_print(old_digest));
 					debug("  New digest: %s\n", digest_print(tmp_digest));
 				}
+			}
+
+			if (ev->event_type == TPM2_EVENT_NO_ACTION) {
+				tpm_startup_event_t *startup;
+
+				/* Skip non-StartupLocality, non-PCR0, and non-first
+				 * NO_ACTION events */
+				if (ev->event_size != sizeof(tpm_startup_event_t) ||
+				    ev->pcr_index != 0 || ev_count != 1)
+					continue;
+
+				startup = (tpm_startup_event_t *)(ev->event_data);
+				if (strncmp(startup->signature, "StartupLocality", 16) != 0)
+					continue;
+
+				/* Set the startup locality */
+				pcr_bank_set_locality(pred, 0, startup->locality);
+
+				continue;
 			}
 
 			/* By the time we encounter the GPT event, we usually haven't seen any

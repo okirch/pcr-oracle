@@ -257,6 +257,11 @@ typedef struct tpm_parsed_event {
 
 typedef struct tpm_event_log_reader tpm_event_log_reader_t;
 
+typedef struct tpm_startup_event {
+	char signature[16];
+	uint8_t locality;
+} tpm_startup_event_t;
+
 extern tpm_event_log_reader_t *	event_log_open(void);
 extern void			event_log_close(tpm_event_log_reader_t *log);
 extern tpm_event_t *		event_log_read_next(tpm_event_log_reader_t *log);
