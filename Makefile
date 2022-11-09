@@ -7,6 +7,7 @@ FAPI_LINK	= -ltss2-fapi -lcrypto
 TOOLS		= pcr-oracle
 
 ORACLE_SRCS	= oracle.c \
+		  pcr.c \
 		  eventlog.c \
 		  efi-devpath.c \
 		  efi-variable.c \
