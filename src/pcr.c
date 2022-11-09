@@ -80,6 +80,23 @@ pcr_bank_get_register(tpm_pcr_bank_t *bank, unsigned int index, const char *algo
 }
 
 void
+pcr_bank_set_locality(tpm_pcr_bank_t *bank, unsigned int pcr_index, uint8_t locality)
+{
+	tpm_evdigest_t *pcr;
+
+	if (!pcr_bank_register_is_valid(bank, pcr_index)) {
+		error("Unable to extend PCR %s:%u: register was not initialized\n",
+				bank->algo_name, pcr_index);
+		return;
+	}
+
+	pcr = &bank->pcr[pcr_index];
+
+	memset(pcr->data, 0, pcr->size);
+	pcr->data[pcr->size-1] = locality;
+}
+
+void
 pcr_bank_init_from_zero(tpm_pcr_bank_t *bank)
 {
 	unsigned int i;

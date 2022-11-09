@@ -178,6 +178,7 @@ predictor_load_eventlog(struct predictor *pred)
 {
 	tpm_event_log_reader_t *log;
 	tpm_event_t *ev, **tail;
+	uint8_t pcr0_locality;
 
 	log = event_log_open();
 
@@ -186,6 +187,9 @@ predictor_load_eventlog(struct predictor *pred)
 		*tail = ev;
 		tail = &ev->next;
 	}
+
+	if (event_log_get_locality(log, 0, &pcr0_locality))
+		pcr_bank_set_locality(&pred->prediction, 0, pcr0_locality);
 
 	event_log_close(log);
 }
@@ -269,26 +273,6 @@ predictor_set_stop_event(struct predictor *pred, const char *event_desc, bool af
 	pred->stop_event.value = strdup(value);
 	pred->stop_event.after = after;
 	free(copy);
-}
-
-static void
-pcr_bank_set_locality(struct predictor *pred, unsigned int pcr_index, const uint8_t locality)
-{
-	tpm_pcr_bank_t *bank;
-	tpm_evdigest_t *pcr;
-
-	bank = &pred->prediction;
-
-	if (!pcr_bank_register_is_valid(bank, pcr_index)) {
-		error("Unable to extend PCR %s:%u: register was not initialized\n",
-				bank->algo_name, pcr_index);
-		return;
-	}
-
-	pcr = &bank->pcr[pcr_index];
-
-	memset(pcr->data, 0, pcr->size);
-	pcr->data[pcr->size-1] = locality;
 }
 
 static void
@@ -525,7 +509,6 @@ predictor_get_event_strategy(unsigned int event_type)
 		-1,
 	};
 	static int copy_types[] = {
-		TPM2_EVENT_NO_ACTION,
 		TPM2_EVENT_S_CRTM_CONTENTS,
 		TPM2_EVENT_S_CRTM_VERSION,
 		TPM2_EFI_PLATFORM_FIRMWARE_BLOB,
@@ -542,6 +525,9 @@ predictor_get_event_strategy(unsigned int event_type)
 
 		-1
 	};
+
+	if (event_type == TPM2_EVENT_NO_ACTION)
+		return EVENT_STRATEGY_NO_ACTION;
 
 	if (int_list_contains(rehash_types, event_type))
 		return EVENT_STRATEGY_PARSE_REHASH;
@@ -629,25 +615,6 @@ predictor_update_eventlog(struct predictor *pred)
 				}
 			}
 
-			if (ev->event_type == TPM2_EVENT_NO_ACTION) {
-				tpm_startup_event_t *startup;
-
-				/* Skip non-StartupLocality, non-PCR0, and non-first
-				 * NO_ACTION events */
-				if (ev->event_size != sizeof(tpm_startup_event_t) ||
-				    ev->pcr_index != 0 || ev->event_index != 1)
-					continue;
-
-				startup = (tpm_startup_event_t *)(ev->event_data);
-				if (strncmp(startup->signature, "StartupLocality", 16) != 0)
-					continue;
-
-				/* Set the startup locality */
-				pcr_bank_set_locality(pred, 0, startup->locality);
-
-				continue;
-			}
-
 			/* By the time we encounter the GPT event, we usually haven't seen any
 			 * BOOT_SERVICES event that would tell us which partition we're booting
 			 * from.
@@ -676,6 +643,9 @@ predictor_update_eventlog(struct predictor *pred)
 				new_digest = old_digest;
 				break;
 
+			case EVENT_STRATEGY_NO_ACTION:
+				goto no_action;
+
 			default:
 				debug("Encountered unexpected event type %s\n",
 						tpm_event_type_to_string(ev->event_type));
@@ -700,6 +670,7 @@ predictor_update_eventlog(struct predictor *pred)
 			predictor_extend_hash(pred, ev->pcr_index, new_digest);
 		}
 
+no_action:
 		if (stop) {
 			debug("Stopped processing event log after indicated event\n");
 			break;

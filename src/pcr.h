@@ -39,6 +39,7 @@ extern bool		pcr_bank_wants_pcr(tpm_pcr_bank_t *bank, unsigned int index);
 extern void		pcr_bank_mark_valid(tpm_pcr_bank_t *bank, unsigned int index);
 extern bool		pcr_bank_register_is_valid(const tpm_pcr_bank_t *bank, unsigned int index);
 extern tpm_evdigest_t *	pcr_bank_get_register(tpm_pcr_bank_t *bank, unsigned int index, const char *algo);
+extern void		pcr_bank_set_locality(tpm_pcr_bank_t *bank, unsigned int index, uint8_t locality);
 extern void		pcr_bank_init_from_zero(tpm_pcr_bank_t *bank);
 extern void		pcr_bank_init_from_snapshot_fp(FILE *fp, tpm_pcr_bank_t *bank);
 extern void		pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank, const char *efivar_path);

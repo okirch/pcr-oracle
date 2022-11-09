@@ -47,6 +47,11 @@ struct tpm_event_log_reader {
 
 		tpm_algo_info_t		algorithms[TPM_EVENT_LOG_MAX_ALGOS];
 	} tcg2_info;
+
+	struct {
+		bool		valid_pcr0_locality;
+		uint8_t		pcr0_locality;
+	} tpm_startup;
 };
 
 
@@ -205,20 +210,42 @@ again:
 	__read_exactly(log->fd, ev->event_data, event_size);
 
 
-	if (log->tpm_version == 1 && ev->event_type == TPM2_EVENT_NO_ACTION
-	 && !strncmp((char *) ev->event_data, "Spec ID Event03", 16)) {
-		debug("Detected TPMv2 event log\n");
+	if (ev->event_type == TPM2_EVENT_NO_ACTION && ev->pcr_index == 0 && count == 0
+	 && ev->event_size >= 16) {
+		char *signature = (char *) ev->event_data;
 
-		if (!__tpm_event_parse_tcg2_info(ev, &log->tcg2_info))
-			fatal("Unable to parse TCG2 magic event header");
+		if (!strncmp(signature, "Spec ID Event03", 16)) {
+			debug("Detected TPMv2 event log\n");
 
-		log->tpm_version = log->tcg2_info.spec_version_major;
-		free(ev);
-		goto again;
+			if (!__tpm_event_parse_tcg2_info(ev, &log->tcg2_info))
+				fatal("Unable to parse TCG2 magic event header");
+
+			log->tpm_version = log->tcg2_info.spec_version_major;
+			free(ev);
+			goto again;
+		} else
+		if (!memcmp(signature, "StartupLocality", 16) && ev->event_size == 17) {
+			log->tpm_startup.valid_pcr0_locality = true;
+			log->tpm_startup.pcr0_locality = ((unsigned char *) signature)[16];
+			free(ev);
+			goto again;
+		}
 	}
 
 	ev->event_index = count++;
 	return ev;
+}
+
+bool
+event_log_get_locality(tpm_event_log_reader_t *log, unsigned int pcr_index, uint8_t *loc_p)
+{
+	if (pcr_index != 0)
+		return false;
+	if (!log->tpm_startup.valid_pcr0_locality)
+		return false;
+
+	*loc_p = log->tpm_startup.pcr0_locality;
+	return true;
 }
 
 /*

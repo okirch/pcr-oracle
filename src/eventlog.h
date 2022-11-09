@@ -22,7 +22,6 @@
 #define EVENTLOG_H
 
 #include "types.h"
-// #include "util.h"
 
 typedef struct tpm_event {
 	struct tpm_event *	next;
@@ -174,6 +173,7 @@ enum {
 	EVENT_STRATEGY_PARSE_NONE,
 	EVENT_STRATEGY_PARSE_REHASH,
 	EVENT_STRATEGY_COPY,
+	EVENT_STRATEGY_NO_ACTION,
 };
 
 /*
@@ -259,14 +259,10 @@ typedef struct tpm_parsed_event {
 
 typedef struct tpm_event_log_reader tpm_event_log_reader_t;
 
-typedef struct tpm_startup_event {
-	char signature[16];
-	uint8_t locality;
-} tpm_startup_event_t;
-
 extern tpm_event_log_reader_t *	event_log_open(void);
 extern void			event_log_close(tpm_event_log_reader_t *log);
 extern tpm_event_t *		event_log_read_next(tpm_event_log_reader_t *log);
+extern bool			event_log_get_locality(tpm_event_log_reader_t *log, unsigned int pcr_index, uint8_t *loc_p);
 extern void			tpm_event_print(tpm_event_t *ev);
 extern void			__tpm_event_print(tpm_event_t *ev, tpm_event_bit_printer *print_fn);
 extern void			tpm_event_log_rehash_ctx_init(tpm_event_log_rehash_ctx_t *,
