@@ -551,6 +551,11 @@ predictor_pre_scan_eventlog(struct predictor *pred, tpm_event_t **stop_event_p)
 		ev->rehash_strategy = predictor_get_event_strategy(ev->event_type);
 		/* debug("%s -> %d\n", tpm_event_type_to_string(ev->event_type), ev->rehash_strategy); */
 
+		/* Calculate the values of PCR1 and PCR3 only based on the event data */
+		if (ev->rehash_strategy == EVENT_STRATEGY_PARSE_REHASH &&
+		    (ev->pcr_index == 1 || ev->pcr_index == 3))
+			ev->rehash_strategy = EVENT_STRATEGY_COPY;
+
 		if (ev->rehash_strategy == EVENT_STRATEGY_PARSE_REHASH) {
 			if (!tpm_event_parse(ev, &scan_ctx)) {
 				/* Provide better error logging */
