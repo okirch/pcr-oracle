@@ -557,28 +557,18 @@ static const tpm_evdigest_t *
 __tpm_event_grub_file_rehash(const tpm_event_t *ev, const tpm_parsed_event_t *parsed, tpm_event_log_rehash_ctx_t *ctx)
 {
 	const struct grub_file_event *evspec = &parsed->grub_file;
-	char path[PATH_MAX], *filename;
+	const tpm_evdigest_t *md = NULL;
 
 	debug("  re-hashing %s\n", __tpm_event_grub_file_describe(parsed));
-	if (evspec->device == NULL) {
-		debug("  assuming the file to reside on system partition\n");
-		filename = evspec->path;
-	} else
-	if (!strcmp(evspec->device, "crypto0")) {
-		debug("  assuming the file to reside on system partition\n");
-		filename = evspec->path;
+	if (evspec->device == NULL || !strcmp(evspec->device, "crypto0")) {
+		debug("  assuming the file resides on system partition\n");
+		md = runtime_digest_rootfs_file(ctx->algo, evspec->path);
 	} else {
-		debug("  assuming the file to reside on EFI boot partition\n");
-		snprintf(path, sizeof(path), "/boot/efi%s", evspec->path);
-		filename = path;
+		debug("  assuming the file resides on EFI boot partition\n");
+		md = runtime_digest_efi_file(ctx->algo, evspec->path);
 	}
 
-	if (access(filename, R_OK) < 0) {
-		error("%s: %m\n", filename);
-		return NULL;
-	}
-
-	return digest_from_file(ctx->algo, filename, 0);
+	return md;
 }
 
 /*

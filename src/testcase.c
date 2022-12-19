@@ -26,8 +26,10 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "testcase.h"
+#include "digest.h"
 #include "runtime.h"
 #include "bufparser.h"
 #include "util.h"
@@ -39,6 +41,9 @@ struct testcase {
 	char *			gpt_directory;
 	char *			partition_directory;
 	char *			disk_directory;
+	char *			hash_log;
+
+	FILE *			hash_log_fp;
 };
 
 struct testcase_block_dev {
@@ -111,6 +116,15 @@ testcase_make_subdir(testcase_t *tc, const char *relative)
 	if (!testcase_mkdir_p(path))
 		fatal("Unable to create directory %s\n", path);
 
+	return strdup(path);
+}
+
+static inline char *
+testcase_make_file(testcase_t *tc, const char *relative)
+{
+	char path[PATH_MAX];
+
+	snprintf(path, sizeof(path), "%s/%s", tc->base_directory, relative);
 	return strdup(path);
 }
 
@@ -234,6 +248,7 @@ testcase_alloc(const char *dirpath)
 	tc->gpt_directory = testcase_make_subdir(tc, "gpts");
 	tc->partition_directory = testcase_make_subdir(tc, "partitions");
 	tc->disk_directory = testcase_make_subdir(tc, "disks");
+	tc->hash_log = testcase_make_file(tc, "hash.log");
 
 	return tc;
 }
@@ -243,8 +258,16 @@ testcase_free(testcase_t *tc)
 {
 	drop_string(&tc->base_directory);
 	drop_string(&tc->efi_directory);
+	drop_string(&tc->bsa_directory);
 	drop_string(&tc->gpt_directory);
 	drop_string(&tc->partition_directory);
+	drop_string(&tc->disk_directory);
+	drop_string(&tc->hash_log);
+
+	if (tc->hash_log_fp != NULL) {
+		fclose(tc->hash_log_fp);
+		tc->hash_log_fp = NULL;
+	}
 }
 
 void
@@ -411,4 +434,157 @@ testcase_playback_pcrs(testcase_t *tc, const char *name)
 		return NULL;
 
 	return fdopen(fd, "r");
+}
+
+/* disambiguate path */
+static const char *
+canon_path(const char *path)
+{
+	static char rpath[PATH_MAX];
+	char *save_path, *comp, *s;
+	char *components[PATH_MAX / 2];
+	unsigned int i, ncomponents = 0;
+	char *dst;
+
+	if (strlen(path) >= sizeof(rpath))
+		fatal("%s: path too long (%s)\n", __func__, path);
+
+	while (*path == '/')
+		++path;
+
+	save_path = strdup(path);
+	for (s = save_path; *comp; ) {
+		comp = s;
+		while (*s) {
+			if (*s == '/') {
+				*s++ = '\0';
+				break;
+			}
+			++s;
+		}
+
+		if (!strcmp(comp, ".")) {
+			/* just consume the "." component */
+		} else
+		if (!strcmp(comp, "..")) {
+			if (ncomponents)
+				--ncomponents;
+		} else
+		if (*comp != '\0') {
+			assert(ncomponents < PATH_MAX / 2);
+			components[ncomponents++] = comp;
+		}
+	}
+
+	if (ncomponents == 0)
+		return "/";
+
+	dst = rpath;
+	for (i = 0; i < ncomponents; ++i) {
+		*dst++ = '/';
+		strcpy(dst, components[i]);
+		dst += strlen(dst);
+	}
+
+	// debug("%s(/%s) -> %s\n", __func__, path, rpath);
+
+	drop_string(&save_path);
+	return rpath;
+}
+
+static FILE *
+testcase_hash_log_open(testcase_t *tc, const char *mode)
+{
+	if (tc->hash_log_fp == NULL) {
+		tc->hash_log_fp = fopen(tc->hash_log, mode);
+		if (tc->hash_log_fp == NULL)
+			fatal("Unable to open %s: %m\n", tc->hash_log);
+	} else if (mode[0] == 'r') {
+		rewind(tc->hash_log_fp);
+	}
+
+	return tc->hash_log_fp;
+}
+
+static void
+testcase_record_digest(testcase_t *tc, const char *klass, const char *path, const tpm_evdigest_t *md)
+{
+	FILE *fp = testcase_hash_log_open(tc, "w");
+
+	fprintf(fp, "%s %s %s %s\n",
+			digest_algo_name(md), digest_print_value(md),
+			klass, canon_path(path));
+}
+
+static const tpm_evdigest_t *
+testcase_playback_digest(testcase_t *tc, const char *klass, const char *path, const tpm_algo_info_t *algo)
+{
+	FILE *fp = testcase_hash_log_open(tc, "r");
+	const char *algo_name = algo->openssl_name;
+	static tpm_evdigest_t md;
+	char linebuf[256];
+
+	path = canon_path(path);
+
+	while (fgets(linebuf, sizeof(linebuf), fp) != NULL) {
+		char *words[16], *word;
+		unsigned int nwords = 0;
+
+		/* chop */
+		linebuf[strcspn(linebuf, "\r\n")] = '\0';
+
+		word = strtok(linebuf, ": ");
+		while (word && nwords < 16) {
+			words[nwords++] = word;
+			word = strtok(NULL, " ");
+		}
+
+		if (nwords != 4)
+			continue;
+
+		if (strcmp(words[0], algo_name)
+		 || strcmp(words[2], klass)
+		 || strcmp(words[3], path))
+			continue;
+
+		memset(&md, 0, sizeof(md));
+		md.size = parse_octet_string(words[1], md.data, sizeof(md.data));
+		md.algo = algo;
+		if (md.size != algo->digest_size) {
+			error("bad %s digest \"%s\" - incorrect length\n", algo->openssl_name, words[1]);
+			continue;
+		}
+		return &md;
+	}
+
+	/* fallback - return all zeros */
+	error("Did not find digest for %s:%s in hash.log - returning all 0 digest\n", klass, path);
+	memset(&md, 0, sizeof(md));
+	md.size = algo->digest_size;
+	md.algo = algo;
+	return &md;
+}
+
+void
+testcase_record_rootfs_digest(testcase_t *tc, const char *path, const tpm_evdigest_t *md)
+{
+	testcase_record_digest(tc, "rootfs", path, md);
+}
+
+const tpm_evdigest_t *
+testcase_playback_rootfs_digest(testcase_t *tc, const char *path, const tpm_algo_info_t *algo)
+{
+	return testcase_playback_digest(tc, "rootfs", path, algo);
+}
+
+void
+testcase_record_efi_digest(testcase_t *tc, const char *path, const tpm_evdigest_t *md)
+{
+	testcase_record_digest(tc, "efi", path, md);
+}
+
+const tpm_evdigest_t *
+testcase_playback_efi_digest(testcase_t *tc, const char *path, const tpm_algo_info_t *algo)
+{
+	return testcase_playback_digest(tc, "efi", path, algo);
 }

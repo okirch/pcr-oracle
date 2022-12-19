@@ -29,6 +29,7 @@
 
 #include "runtime.h"
 #include "bufparser.h"
+#include "digest.h"
 #include "testcase.h"
 #include "util.h"
 
@@ -245,6 +246,36 @@ buffer_t *
 runtime_read_efi_variable(const char *var_name)
 {
 	return __system_read_efi_variable(var_name);
+}
+
+const tpm_evdigest_t *
+runtime_digest_efi_file(const tpm_algo_info_t *algo, const char *path)
+{
+	const tpm_evdigest_t *md;
+
+	if (testcase_playback)
+		return testcase_playback_efi_digest(testcase_playback, path, algo);
+
+	md = digest_from_file(algo, path, 0);
+	if (md && testcase_recording)
+		testcase_record_efi_digest(testcase_recording, path, md);
+
+	return md;
+}
+
+const tpm_evdigest_t *
+runtime_digest_rootfs_file(const tpm_algo_info_t *algo, const char *path)
+{
+	const tpm_evdigest_t *md;
+
+	if (testcase_playback)
+		return testcase_playback_rootfs_digest(testcase_playback, path, algo);
+
+	md = digest_from_file(algo, path, 0);
+	if (md && testcase_recording)
+		testcase_record_rootfs_digest(testcase_recording, path, md);
+
+	return md;
 }
 
 buffer_t *

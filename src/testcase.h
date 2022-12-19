@@ -43,6 +43,11 @@ extern char *			testcase_playback_partition_uuid(testcase_t *, const char *uuid)
 extern char *			testcase_playback_partition_disk(testcase_t *, const char *dev_name);
 extern int			testcase_playback_block_dev(testcase_t *, const char *dev_path);
 
+extern void			testcase_record_rootfs_digest(testcase_t *, const char *path, const tpm_evdigest_t *md);
+extern const tpm_evdigest_t *	testcase_playback_rootfs_digest(testcase_t *, const char *path, const tpm_algo_info_t *algo);
+extern void			testcase_record_efi_digest(testcase_t *, const char *path, const tpm_evdigest_t *md);
+extern const tpm_evdigest_t *	testcase_playback_efi_digest(testcase_t *, const char *path, const tpm_algo_info_t *algo);
+
 #include <stdio.h>
 
 extern FILE *			testcase_record_pcrs(testcase_t *, const char *name);
