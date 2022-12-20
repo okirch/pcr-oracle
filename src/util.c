@@ -299,3 +299,33 @@ __convert_to_utf16le(char *in_string, size_t in_bytes, char *out_string, size_t 
 	return true;
 }
 
+/*
+ * Helper for measuring exec times
+ */
+static double
+relative_timing(void)
+{
+	static struct timespec t0;
+	struct timespec now, delta;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	if (t0.tv_sec == 0 && t0.tv_nsec == 0)
+		t0 = now;
+
+	delta.tv_sec = now.tv_sec - t0.tv_sec;
+	delta.tv_nsec = now.tv_nsec - t0.tv_nsec;
+
+	return delta.tv_sec + 1e-9 * delta.tv_nsec;
+}
+
+double
+timing_begin(void)
+{
+	return relative_timing();
+}
+
+double
+timing_since(double since)
+{
+	return relative_timing() - since;
+}

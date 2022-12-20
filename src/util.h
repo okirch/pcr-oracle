@@ -132,4 +132,7 @@ extern const char *	print_octet_string(const unsigned char *data, unsigned int l
 extern bool		__convert_from_utf16le(char *in_string, size_t in_bytes, char *out_string, size_t out_bytes);
 extern bool		__convert_to_utf16le(char *in_string, size_t in_bytes, char *out_string, size_t out_bytes);
 
+extern double		timing_begin(void);
+extern double		timing_since(double);
+
 #endif /* UTIL_H */
