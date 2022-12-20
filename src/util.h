@@ -57,6 +57,27 @@ debug2(const char *fmt, ...)
 }
 
 static inline void
+infomsg(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+}
+
+static inline void
+warning(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fprintf(stderr, "Warning: ");
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+}
+
+static inline void
 error(const char *fmt, ...)
 {
 	va_list ap;
