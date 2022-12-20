@@ -136,47 +136,6 @@ file_locator_get_full_path(const file_locator_t *loc)
 }
 
 static buffer_t *
-__system_read_file(const char *filename, int flags)
-{
-	buffer_t *bp;
-	struct stat stb;
-	int count;
-	int fd;
-
-	if ((fd = open(filename, O_RDONLY)) < 0) {
-		if (errno == ENOENT && (flags & RUNTIME_MISSING_FILE_OKAY))
-			return NULL;
-
-		fatal("Unable to open file %s: %m\n", filename);
-	}
-
-	if (fstat(fd, &stb) < 0)
-		fatal("Cannot stat %s: %m\n", filename);
-
-	bp = buffer_alloc_write(stb.st_size);
-	if (bp == NULL)
-		fatal("Cannot allocate buffer of %lu bytes for %s: %m\n",
-				(unsigned long) stb.st_size,
-				filename);
-
-	count = read(fd, bp->data, stb.st_size);
-	if (count < 0)
-		fatal("Error while reading from %s: %m\n", filename);
-
-	if (flags & RUNTIME_SHORT_READ_OKAY) {
-		/* NOP */
-	} else if (count != stb.st_size) {
-		fatal("Short read from %s\n", filename);
-	}
-
-	close(fd);
-
-	debug("Read %u bytes from %s\n", count, filename);
-	bp->wpos = count;
-	return bp;
-}
-
-static buffer_t *
 __system_read_efi_variable(const char *var_name)
 {
 	char filename[PATH_MAX];
@@ -187,14 +146,14 @@ __system_read_efi_variable(const char *var_name)
 
 	/* First, try new efivars interface */
 	snprintf(filename, sizeof(filename), "/sys/firmware/efi/efivars/%s", var_name);
-	result = __system_read_file(filename, RUNTIME_SHORT_READ_OKAY | RUNTIME_MISSING_FILE_OKAY);
+	result = buffer_read_file(filename, RUNTIME_SHORT_READ_OKAY | RUNTIME_MISSING_FILE_OKAY);
 	if (result != NULL) {
 		/* Skip over 4 bytes of variable attributes */
 		buffer_skip(result, 4);
 	} else {
 		/* Fall back to old sysfs entries with their 1K limitation */
 		snprintf(filename, sizeof(filename), "/sys/firmware/efi/vars/%s/data", var_name);
-		result = __system_read_file(filename, RUNTIME_SHORT_READ_OKAY);
+		result = buffer_read_file(filename, RUNTIME_SHORT_READ_OKAY);
 	}
 
 	if (result && testcase_recording)
@@ -239,7 +198,13 @@ runtime_open_ima_measurements(void)
 buffer_t *
 runtime_read_file(const char *path, int flags)
 {
-	return __system_read_file(path, flags);
+	return buffer_read_file(path, flags);
+}
+
+bool
+runtime_write_file(const char *path, buffer_t *bp)
+{
+	return buffer_write_file(path, bp);
 }
 
 buffer_t *

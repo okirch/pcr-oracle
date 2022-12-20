@@ -35,6 +35,7 @@ extern const char *	file_locator_get_full_path(const file_locator_t *);
 extern int		runtime_open_eventlog(void);
 extern int		runtime_open_ima_measurements(void);
 extern buffer_t *	runtime_read_file(const char *pathname, int flags);
+extern bool		runtime_write_file(const char *pathname, buffer_t *);
 extern buffer_t *	runtime_read_efi_variable(const char *var_name);
 extern buffer_t *	runtime_read_efi_application(const char *partition, const char *application);
 extern const tpm_evdigest_t *runtime_digest_efi_file(const tpm_algo_info_t *algo, const char *path);

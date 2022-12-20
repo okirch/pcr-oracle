@@ -309,4 +309,7 @@ buffer_copy(buffer_t *src, unsigned int count, buffer_t *dst)
 	return true;
 }
 
+extern buffer_t *		buffer_read_file(const char *filename, int flags);
+extern bool			buffer_write_file(const char *filename, buffer_t *bp);
+
 #endif /* BUFPARSER_H */
