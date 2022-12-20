@@ -154,6 +154,9 @@ digest_compute(const tpm_algo_info_t *algo_info, const void *data, unsigned int 
 const tpm_evdigest_t *
 digest_buffer(const tpm_algo_info_t *algo_info, struct buffer *buffer)
 {
+	if (buffer == NULL)
+		return NULL;
+
 	return digest_compute(algo_info, buffer_read_pointer(buffer), buffer_available(buffer));
 }
 
@@ -164,10 +167,7 @@ digest_from_file(const tpm_algo_info_t *algo_info, const char *filename, int fla
 	buffer_t *buffer;
 
 	buffer = runtime_read_file(filename, flags);
-
-	md = digest_compute(algo_info,
-			buffer_read_pointer(buffer),
-			buffer_available(buffer));
+	md = digest_buffer(algo_info, buffer);
 	buffer_free(buffer);
 
 	return md;

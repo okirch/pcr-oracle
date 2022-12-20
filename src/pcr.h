@@ -30,6 +30,7 @@ typedef struct tpm_pcr_bank {
 	uint32_t		pcr_mask;
 	uint32_t		valid_mask;
 	const char *		algo_name;
+	const tpm_algo_info_t *	algo_info;
 	tpm_evdigest_t		pcr[PCR_BANK_REGISTER_MAX];
 } tpm_pcr_bank_t;
 
@@ -44,5 +45,18 @@ extern void		pcr_bank_init_from_zero(tpm_pcr_bank_t *bank);
 extern void		pcr_bank_init_from_snapshot_fp(FILE *fp, tpm_pcr_bank_t *bank);
 extern void		pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank, const char *efivar_path);
 extern void		pcr_bank_init_from_current(tpm_pcr_bank_t *bank);
+
+extern bool		pcr_authorized_policy_create(unsigned int pcr_mask, const tpm_algo_info_t *algo,
+				const char *rsakey_path, const char *output_path);
+extern bool		pcr_policy_sign(const tpm_pcr_bank_t *bank,
+				const char *rsakey_path, const char *output_path);
+extern bool		pcr_authorized_policy_seal_secret(const char *authorized_policy,
+				const char *input_path, const char *output_path);
+extern bool		pcr_authorized_policy_unseal_secret(unsigned int pcr_mask, const tpm_algo_info_t *algo,
+				const char *authorized_policy,
+				const char *signed_policy_path,
+				const char *rsakey_path,
+				const char *input_path, const char *output_path);
+
 
 #endif /* PCR_H */

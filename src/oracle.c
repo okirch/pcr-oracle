@@ -34,6 +34,15 @@
 #include "testcase.h"
 
 enum {
+	ACTION_NONE,
+	ACTION_PREDICT,
+	ACTION_CREATE_AUTH_POLICY,
+	ACTION_SEAL,
+	ACTION_UNSEAL,
+	ACTION_SIGN
+};
+
+enum {
 	STOP_EVENT_NONE,
 	STOP_EVENT_GRUB_COMMAND,
 	STOP_EVENT_GRUB_FILE,
@@ -69,6 +78,16 @@ enum {
 	OPT_VERIFY,
 	OPT_CREATE_TESTCASE,
 	OPT_REPLAY_TESTCASE,
+
+	/* This should probably be a standalone command */
+	OPT_RSA_KEY,
+	OPT_INPUT,
+	OPT_OUTPUT,
+	OPT_AUTHORIZED_POLICY,
+	OPT_PCR_POLICY,
+//	OPT_SEAL_SECRET,
+//	OPT_CREATE_AUTHORIZED_POLICY,
+//	OPT_SIGN_POLICY,
 };
 
 static struct option options[] = {
@@ -86,6 +105,16 @@ static struct option options[] = {
 	{ "use-pesign",		no_argument,		0,	OPT_USE_PESIGN },
 	{ "create-testcase",	required_argument,	0,	OPT_CREATE_TESTCASE },
 	{ "replay-testcase",	required_argument,	0,	OPT_REPLAY_TESTCASE },
+
+//	{ "create-authorized-policy",
+//				no_argument,		0,	OPT_CREATE_AUTHORIZED_POLICY },
+//	{ "sign-policy",	no_argument,		0,	OPT_SIGN_POLICY },
+	{ "rsa-key",		required_argument,	0,	OPT_RSA_KEY },
+	{ "input",		required_argument,	0,	OPT_INPUT },
+	{ "output",		required_argument,	0,	OPT_OUTPUT },
+//	{ "seal-secret",	no_argument,		0,	OPT_SEAL_SECRET },
+	{ "authorized-policy",	required_argument,	0,	OPT_AUTHORIZED_POLICY },
+	{ "pcr-policy",		required_argument,	0,	OPT_PCR_POLICY },
 
 	{ NULL }
 };
@@ -857,11 +886,71 @@ try_parse_pcr_mask(const char *word, unsigned int *mask_ret)
 	return parse_pcr_mask(word, mask_ret);
 }
 
+static const char *
+next_argument(int argc, char **argv)
+{
+	if (optind >= argc)
+		usage(1, "Missing argument(s)");
+	return argv[optind++];
+}
+
+static int
+get_action_argument(int argc, char **argv)
+{
+	static struct act {
+		const char *	name;
+		int		value;
+	} actions[] = {
+		{ "predict",			ACTION_PREDICT	},
+		{ "create-authorized-policy",	ACTION_CREATE_AUTH_POLICY	},
+		{ "seal-secret",		ACTION_SEAL	},
+		{ "unseal-secret",		ACTION_UNSEAL	},
+		{ "sign",			ACTION_SIGN	},
+
+		{ NULL, 0 },
+	};
+	unsigned int i, pcr_mask;
+	const char *word;
+
+	word = next_argument(argc, argv);
+
+	for (i = 0; actions[i].name; ++i) {
+		if (!strcmp(actions[i].name, word))
+			return actions[i].value;
+	}
+
+	if (try_parse_pcr_mask(word, &pcr_mask)) {
+		/* Backward compat: predict and display */
+		optind -= 1;
+		return ACTION_PREDICT;
+	}
+
+	error("Unknown action \"%s\"\n", word);
+	usage(1, NULL);
+	return ACTION_NONE;
+}
+
+static unsigned int
+get_pcr_mask_argument(int argc, char ** argv)
+{
+	unsigned int pcr_mask;
+	const char *word;
+
+	word = next_argument(argc, argv);
+	if (!try_parse_pcr_mask(word, &pcr_mask)) {
+		error("Unable to parse PCR mask \"%s\"\n", word);
+		usage(1, "Bad value for PCR argument");
+	}
+
+	return pcr_mask;
+}
+
 int
 main(int argc, char **argv)
 {
 	unsigned int pcr_mask;
 	struct predictor *pred;
+	int action = ACTION_NONE;
 	char *opt_from = NULL;
 	char *opt_algo = NULL;
 	char *opt_output_format = NULL;
@@ -870,6 +959,11 @@ main(int argc, char **argv)
 	char *opt_verify = NULL;
 	char *opt_create_testcase = NULL;
 	char *opt_replay_testcase = NULL;
+	char *opt_input = NULL;
+	char *opt_output = NULL;
+	char *opt_authorized_policy = NULL;
+	char *opt_pcr_policy = NULL;
+	char *opt_rsa_key = NULL;
 	int c, exit_code = 0;
 
 	while ((c = getopt_long(argc, argv, "dhA:CF:LSZ", options, NULL)) != EOF) {
@@ -919,6 +1013,30 @@ main(int argc, char **argv)
 		case OPT_REPLAY_TESTCASE:
 			opt_replay_testcase = optarg;
 			break;
+		case OPT_RSA_KEY:
+			opt_rsa_key = optarg;
+			break;
+//		case OPT_CREATE_AUTHORIZED_POLICY:
+//			opt_create_authpolicy = true;
+//			break;
+//		case OPT_SEAL_SECRET:
+//			opt_seal_secret = true;
+//			break;
+//		case OPT_SIGN_POLICY:
+//			opt_sign_policy = true;
+//			break;
+		case OPT_INPUT:
+			opt_input = optarg;
+			break;
+		case OPT_OUTPUT:
+			opt_output = optarg;
+			break;
+		case OPT_AUTHORIZED_POLICY:
+			opt_authorized_policy = optarg;
+			break;
+		case OPT_PCR_POLICY:
+			opt_pcr_policy = optarg;
+			break;
 		case 'h':
 			usage(0, NULL);
 		default:
@@ -926,8 +1044,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	if (optind + 1 > argc)
-		usage(1, "Expected PCR index as argument");
+	action = get_action_argument(argc, argv);
 
 	if (opt_replay_testcase && opt_create_testcase)
 		fatal("--create-testcase and --replay-testcase are mutually exclusive\n");
@@ -938,12 +1055,92 @@ main(int argc, char **argv)
 	if (opt_create_testcase)
 		runtime_record_testcase(testcase_alloc(opt_create_testcase));
 
-	if (!try_parse_pcr_mask(argv[optind++], &pcr_mask))
-		usage(1, "Bad value for PCR argument");
+	/* Validate options */
+	switch (action) {
+	case ACTION_PREDICT:
+		break;
+
+	case ACTION_CREATE_AUTH_POLICY:
+		if (opt_rsa_key == NULL)
+			usage(1, "You need to specify the --rsa-key option when creating an authorized policy\n");
+		/* end_arguments(); */
+		break;
+
+	case ACTION_SEAL:
+		/* end_arguments(); */
+		break;
+
+	case ACTION_UNSEAL:
+		if (opt_authorized_policy) {
+			if (opt_rsa_key == NULL)
+				usage(1, "You need to specify the --rsa-key option when unsealing using an authorized policy\n");
+			if (opt_pcr_policy == NULL)
+				usage(1, "You need to specify the --pcr-policy option when unsealing using an authorized policy\n");
+		}
+		/* end_arguments(); */
+		break;
+
+	case ACTION_SIGN:
+		if (opt_rsa_key == NULL)
+			usage(1, "You need to specify the --rsa-key option when signing a policy\n");
+		/* end_arguments(); */
+		break;
+
+	}
+
+	if (action == ACTION_CREATE_AUTH_POLICY) {
+		const tpm_algo_info_t *algo_info;
+
+		pcr_mask = get_pcr_mask_argument(argc, argv);
+
+		algo_info = digest_by_name(opt_algo? : "sha256");
+		if (algo_info == NULL)
+			fatal("You requested an unknown hash algorithm, sorry\n");
+
+		if (opt_input != NULL)
+			warning("Ignoring --input option when creating authorized policy\n");
+		if (opt_output != NULL)
+			warning("Ignoring --output option when creating authorized policy\n");
+
+		if (!pcr_authorized_policy_create(pcr_mask, algo_info, opt_rsa_key, opt_authorized_policy))
+			return 1;
+
+		return 0;
+	}
+
+	/* When sealing a secret against an authorized policy, there's no need to
+	 * mess around with PCR values. That's the beauty of it... */
+	if (action == ACTION_SEAL && opt_authorized_policy) {
+		if (!pcr_authorized_policy_seal_secret(opt_authorized_policy, opt_input, opt_output))
+			return 1;
+
+		return 0;
+	}
+
+	if (action == ACTION_UNSEAL) {
+		if (opt_authorized_policy) {
+			const tpm_algo_info_t *algo_info;
+
+			pcr_mask = get_pcr_mask_argument(argc, argv);
+
+			algo_info = digest_by_name(opt_algo? : "sha256");
+			if (algo_info == NULL)
+				fatal("You requested an unknown hash algorithm, sorry\n");
+
+			/* input is the sealed secret, output is the cleartext */
+			if (!pcr_authorized_policy_unseal_secret(pcr_mask, algo_info, opt_authorized_policy, opt_pcr_policy, opt_rsa_key, opt_input, opt_output))
+				return 1;
+		} else {
+			fatal("Unseal using plain PCR policy not implemented\n");
+		}
+
+		return 0;
+	}
 
 	if (opt_stop_event && (!opt_from || strcmp(opt_from, "eventlog")))
 		usage(1, "--stop-event only makes sense when using event log");
 
+	pcr_mask = get_pcr_mask_argument(argc, argv);
 	pred = predictor_new(pcr_mask, opt_from, opt_algo, opt_output_format);
 
 	if (opt_stop_event)
@@ -951,10 +1148,20 @@ main(int argc, char **argv)
 
 	predictor_update_all(pred, argc - optind, argv + optind);
 
-	if (opt_verify)
-		exit_code = !!predictor_verify(pred, opt_verify);
-	else
-		predictor_report(pred);
+	if (action == ACTION_PREDICT) {
+		if (opt_verify)
+			exit_code = !!predictor_verify(pred, opt_verify);
+		else
+			predictor_report(pred);
+	} else
+	if (action == ACTION_SEAL) {
+		/* TBD - seal secret against a set of PCR values */
+		fatal("blah\n");
+	} else
+	if (action == ACTION_SIGN) {
+		if (!pcr_policy_sign(&pred->prediction, opt_rsa_key, opt_output))
+			return 1;
+	}
 
 	return exit_code;
 }

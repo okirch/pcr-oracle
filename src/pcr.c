@@ -38,6 +38,7 @@ pcr_bank_initialize(tpm_pcr_bank_t *bank, unsigned int pcr_mask, const tpm_algo_
 	unsigned int i;
 
 	memset(bank, 0, sizeof(*bank));
+	bank->algo_info = algo;
 	bank->algo_name = algo->openssl_name;
 	bank->pcr_mask = pcr_mask;
 

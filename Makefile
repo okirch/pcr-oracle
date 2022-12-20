@@ -1,13 +1,15 @@
 PKGNAME		= pcr-oracle-0.3
 
-# CCOPT		= -O0 -g
+CCOPT		= -O0 -g
 FIRSTBOOTDIR	= /usr/share/jeos-firstboot
 CFLAGS		= -Wall -I /usr/include/tss2 $(CCOPT)
-FAPI_LINK	= -ltss2-fapi -lcrypto
+TSS2_LINK	= -ltss2-esys -ltss2-tctildr -ltss2-fapi -ltss2-rc -ltss2-mu -lcrypto
 TOOLS		= pcr-oracle
 
 ORACLE_SRCS	= oracle.c \
 		  pcr.c \
+		  rsa.c \
+		  pcr-policy.c \
 		  eventlog.c \
 		  efi-devpath.c \
 		  efi-variable.c \
@@ -35,7 +37,7 @@ clean:
 	rm -rf build
 
 pcr-oracle: $(ORACLE_OBJS)
-	$(CC) -o $@ $(ORACLE_OBJS) $(FAPI_LINK)
+	$(CC) -o $@ $(ORACLE_OBJS) $(TSS2_LINK)
 
 build/%.o: src/%.c
 	@mkdir -p build

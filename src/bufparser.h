@@ -26,9 +26,10 @@
 #include "util.h"
 
 struct buffer {
-	unsigned int		rpos;
-	unsigned int		wpos;
-	unsigned int		size;
+	/* we make these size_t's to be compatible with the TSS2 marshal/unmarshal api */
+	size_t			rpos;
+	size_t			wpos;
+	size_t			size;
 	unsigned char *		data;
 };
 
@@ -205,6 +206,13 @@ buffer_alloc_write(unsigned long size)
 static inline void
 buffer_free(buffer_t *bp)
 {
+	free(bp);
+}
+
+static inline void
+buffer_free_secret(buffer_t *bp)
+{
+	memset(bp->data, 0, bp->size);
 	free(bp);
 }
 
