@@ -839,6 +839,24 @@ predictor_report_binary(struct predictor *pred, unsigned int pcr_index)
 		fatal("failed to write hash to stdout");
 }
 
+/*
+ * Parse a pcr-mask argument
+ */
+static bool
+try_parse_pcr_mask(const char *word, unsigned int *mask_ret)
+{
+	if (!strcmp(word, "all")) {
+		*mask_ret = ~0U;
+		if (ima_is_active()) {
+			infomsg("Excluding PCR 10 from prediction (used by IMA)\n");
+			*mask_ret &= ~(1 << 10);
+		}
+		return true;
+	}
+
+	return parse_pcr_mask(word, mask_ret);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -850,7 +868,6 @@ main(int argc, char **argv)
 	char *opt_stop_event = NULL;
 	bool opt_stop_before = true;
 	char *opt_verify = NULL;
-	char *pcr_mask_string;
 	char *opt_create_testcase = NULL;
 	char *opt_replay_testcase = NULL;
 	int c, exit_code = 0;
@@ -921,15 +938,7 @@ main(int argc, char **argv)
 	if (opt_create_testcase)
 		runtime_record_testcase(testcase_alloc(opt_create_testcase));
 
-	pcr_mask_string = argv[optind++];
-	if (!strcmp(pcr_mask_string, "all")) {
-		pcr_mask = ~0U;
-		if (ima_is_active()) {
-			printf("Excluding PCR 10 from prediction (used by IMA)\n");
-			pcr_mask &= ~(1 << 10);
-		}
-	} else
-	if (!parse_pcr_mask(pcr_mask_string, &pcr_mask))
+	if (!try_parse_pcr_mask(argv[optind++], &pcr_mask))
 		usage(1, "Bad value for PCR argument");
 
 	if (opt_stop_event && (!opt_from || strcmp(opt_from, "eventlog")))
