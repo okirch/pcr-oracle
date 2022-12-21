@@ -824,8 +824,11 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	rc = Esys_Unseal(esys_context, sealed_object_handle,
                 session_handle, ESYS_TR_NONE, ESYS_TR_NONE,
                 (TPM2B_SENSITIVE_DATA **) sensitive_ret);
+	if (!__tss_check_error(rc, "Esys_Unseal failed"))
+		goto cleanup;
 
-	infomsg("So far so good.\n");
+	infomsg("Successfully unsealed... something.\n");
+	okay = true;
 
 cleanup:
 	if (public_key_name)
@@ -985,6 +988,7 @@ pcr_policy_sign(const tpm_pcr_bank_t *bank, const char *rsakey_path, const char 
 	if (!write_signature(output_path, signed_policy))
 		goto out;
 	infomsg("Signed PCR policy written to %s\n", output_path?: "(standard output)");
+	okay = true;
 
 out:
 	if (pcr_policy)
