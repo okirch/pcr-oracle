@@ -340,26 +340,22 @@ tss_esys_context(void)
 
 		rc = Esys_Initialize(&esys_ctx, NULL, NULL);
 		if (!__tss_check_error(rc, "Unable to initialize TSS2 ESAPI context"))
-			return NULL;
+			fatal("Aborting.\n");
 	}
 	return esys_ctx;
 }
 
 static bool
-esys_start_auth_session(TPM2_SE session_type, ESYS_TR *session_handle_ret)
+esys_start_auth_session(ESYS_CONTEXT *esys_context, TPM2_SE session_type, ESYS_TR *session_handle_ret)
 {
 	static const TPMT_SYM_DEF symmetric = {
 		.algorithm = TPM2_ALG_AES,
 		.keyBits = { .aes = 128 },
 		.mode = { .aes = TPM2_ALG_CFB }
 	};
-	ESYS_CONTEXT *ctx;
 	TSS2_RC rc;
 
-	if (!(ctx = tss_esys_context()))
-		return false;
-
-	rc = Esys_StartAuthSession(ctx,
+	rc = Esys_StartAuthSession(esys_context,
 			ESYS_TR_NONE,	/* tpmKey */
 			ESYS_TR_NONE,	/* bind */
 			ESYS_TR_NONE,	/* shandle1 */
@@ -376,14 +372,14 @@ esys_start_auth_session(TPM2_SE session_type, ESYS_TR *session_handle_ret)
 }
 
 static void
-esys_flush_context(ESYS_TR *session_handle_p)
+esys_flush_context(ESYS_CONTEXT *esys_context, ESYS_TR *session_handle_p)
 {
 	TSS2_RC rc;
 
 	if (*session_handle_p == ESYS_TR_NONE)
 		return;
 
-	rc = Esys_FlushContext(tss_esys_context(), *session_handle_p);
+	rc = Esys_FlushContext(esys_context, *session_handle_p);
 	(void) __tss_check_error(rc, "Esys_FlushContext failed");
         *session_handle_p = ESYS_TR_NONE;
 }
@@ -431,18 +427,14 @@ __pcr_selection_add(TPML_PCR_SELECTION *sel, unsigned int algo_id, unsigned int 
 }
 
 static bool
-__pcr_bank_hash(const tpm_pcr_bank_t *bank, TPM2B_DIGEST **hash_ret, TPML_PCR_SELECTION *pcr_sel)
+__pcr_bank_hash(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank, TPM2B_DIGEST **hash_ret, TPML_PCR_SELECTION *pcr_sel)
 {
-	ESYS_CONTEXT *esys_context;
 	TPM2B_AUTH null_auth = { .size = 0 };
 	ESYS_TR sequence_handle = ESYS_TR_NONE;
 	unsigned int i;
 	TSS2_RC rc;
 
 	memset(pcr_sel, 0, sizeof(*pcr_sel));
-
-	if (!(esys_context = tss_esys_context()))
-		return false;
 
 	rc = Esys_HashSequenceStart(esys_context, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
 			&null_auth,
@@ -494,17 +486,13 @@ failed:
 }
 
 static bool
-esys_policy_pcr(TPML_PCR_SELECTION *pcrSel, TPM2B_DIGEST *pcrDigest, TPM2B_DIGEST **result)
+esys_policy_pcr(ESYS_CONTEXT *esys_context, TPML_PCR_SELECTION *pcrSel, TPM2B_DIGEST *pcrDigest, TPM2B_DIGEST **result)
 {
 	ESYS_TR session_handle = ESYS_TR_NONE;
-	ESYS_CONTEXT *esys_context;
 	TPM2_RC rc;
 	bool ok = false;
 
-	if (!(esys_context = tss_esys_context()))
-		goto cleanup;
-
-	if (!esys_start_auth_session(TPM2_SE_TRIAL, &session_handle))
+	if (!esys_start_auth_session(esys_context, TPM2_SE_TRIAL, &session_handle))
 		return false;
 
 	rc = Esys_PolicyPCR(esys_context, session_handle, ESYS_TR_NONE,
@@ -520,12 +508,12 @@ esys_policy_pcr(TPML_PCR_SELECTION *pcrSel, TPM2B_DIGEST *pcrDigest, TPM2B_DIGES
 	ok = true;
 
 cleanup:
-	esys_flush_context(&session_handle);
+	esys_flush_context(esys_context, &session_handle);
 	return ok;
 }
 
 static TPM2B_DIGEST *
-__pcr_policy_make(const tpm_pcr_bank_t *bank)
+__pcr_policy_make(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank)
 {
 	TPML_PCR_SELECTION pcrSel;
 	TPM2B_DIGEST *pcrDigest = NULL;
@@ -534,12 +522,12 @@ __pcr_policy_make(const tpm_pcr_bank_t *bank)
 	if (!__pcr_selection_build(&pcrSel, bank))
 		return NULL;
 
-	if (!__pcr_bank_hash(bank, &pcrDigest, &pcrSel)) {
+	if (!__pcr_bank_hash(esys_context, bank, &pcrDigest, &pcrSel)) {
 		debug("__pcr_bank_hash failed");
 		return NULL;
 	}
 
-	if (!esys_policy_pcr(&pcrSel, pcrDigest, &result))
+	if (!esys_policy_pcr(esys_context, &pcrSel, pcrDigest, &result))
 		assert(result == NULL);
 
 	if (pcrDigest)
@@ -548,10 +536,10 @@ __pcr_policy_make(const tpm_pcr_bank_t *bank)
 }
 
 static bool
-esys_create_authorized_policy(TPM2B_DIGEST *pcrPolicy, const TPM2B_PUBLIC *pubKey,
+esys_create_authorized_policy(ESYS_CONTEXT *esys_context,
+			TPM2B_DIGEST *pcrPolicy, const TPM2B_PUBLIC *pubKey,
 			TPM2B_DIGEST **authorizedPolicy)
 {
-	ESYS_CONTEXT *esys_context;
 	ESYS_TR session_handle;
 	TPM2B_NONCE policy_qualifier = { .size = 0 };
 	ESYS_TR pub_key_handle;
@@ -559,8 +547,6 @@ esys_create_authorized_policy(TPM2B_DIGEST *pcrPolicy, const TPM2B_PUBLIC *pubKe
 	TPM2_RC rc;
 	bool okay = false;
 
-	if (!(esys_context = tss_esys_context()))
-		goto out;
 	rc = Esys_LoadExternal(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, NULL,
 			pubKey, TPM2_RH_OWNER,
@@ -573,7 +559,7 @@ esys_create_authorized_policy(TPM2B_DIGEST *pcrPolicy, const TPM2B_PUBLIC *pubKe
 		goto out;
 
 	/* Create a trial session */
-	if (!esys_start_auth_session(TPM2_SE_TRIAL, &session_handle))
+	if (!esys_start_auth_session(esys_context, TPM2_SE_TRIAL, &session_handle))
 		goto out;
 
 	TPMT_TK_VERIFIED check_ticket = { .tag = TPM2_ST_VERIFIED, .hierarchy = TPM2_RH_OWNER, .digest = { 0 } };
@@ -605,23 +591,19 @@ esys_create_authorized_policy(TPM2B_DIGEST *pcrPolicy, const TPM2B_PUBLIC *pubKe
 out:
 	if (public_key_name)
 		free(public_key_name);
-	esys_flush_context(&session_handle);
-	esys_flush_context(&pub_key_handle);
+	esys_flush_context(esys_context, &session_handle);
+	esys_flush_context(esys_context, &pub_key_handle);
 
 	return okay;
 }
 
 static bool
-esys_create_primary(ESYS_TR *handle_ret)
+esys_create_primary(ESYS_CONTEXT *esys_context, ESYS_TR *handle_ret)
 {
-	ESYS_CONTEXT *esys_context;
 	TPM2B_SENSITIVE_CREATE in_sensitive = { .size = 0 };
 	TPML_PCR_SELECTION creation_pcr = { .count = 0 };
 	double t0;
 	TPM2_RC rc;
-
-	if (!(esys_context = tss_esys_context()))
-		return false;
 
 	t0 = timing_begin();
 	rc = Esys_CreatePrimary(esys_context, ESYS_TR_RH_OWNER,
@@ -639,16 +621,13 @@ esys_create_primary(ESYS_TR *handle_ret)
 }
 
 static bool
-esys_create(ESYS_TR srk_handle, TPM2B_DIGEST *authorized_policy, TPM2B_SENSITIVE_DATA *secret,
+esys_create(ESYS_CONTEXT *esys_context,
+		ESYS_TR srk_handle, TPM2B_DIGEST *authorized_policy, TPM2B_SENSITIVE_DATA *secret,
 		TPM2B_PRIVATE **out_private, TPM2B_PUBLIC **out_public)
 {
-	ESYS_CONTEXT *esys_context;
 	TPM2B_SENSITIVE_CREATE in_sensitive;
 	TPM2B_PUBLIC in_public;
 	TPM2_RC rc;
-
-	if (!(esys_context = tss_esys_context()))
-		return false;
 
 	memset(&in_sensitive, 0, sizeof(in_sensitive));
 	in_sensitive.size = sizeof(in_sensitive);
@@ -670,14 +649,14 @@ esys_create(ESYS_TR srk_handle, TPM2B_DIGEST *authorized_policy, TPM2B_SENSITIVE
 }
 
 static bool
-esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
+esys_unseal_authorized(ESYS_CONTEXT *esys_context,
+		const TPM2B_DIGEST *authorized_policy,
 		const tpm_pcr_bank_t *bank,
 		const TPMT_SIGNATURE *policy_signature,
 		const TPM2B_PUBLIC *pub_key,
 		const TPM2B_PUBLIC *sealed_public, const TPM2B_PRIVATE *sealed_private,
 		TPM2B_SENSITIVE_DATA **sensitive_ret)
 {
-	ESYS_CONTEXT *esys_context;
 	TPML_PCR_SELECTION pcrs;
 	ESYS_TR pub_key_handle = ESYS_TR_NONE;
 	ESYS_TR session_handle = ESYS_TR_NONE;
@@ -695,11 +674,8 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	if (policy_signature->signature.rsassa.hash != TPM2_ALG_SHA256)
 		warning("%s: bad hash %x\n", __func__, policy_signature->signature.rsassa.hash);
 
-	if (!(esys_context = tss_esys_context()))
-		goto cleanup;
-
 	__pcr_selection_build(&pcrs, bank);
-	if (!(pcr_policy = __pcr_policy_make(bank)))
+	if (!(pcr_policy = __pcr_policy_make(esys_context, bank)))
 		goto cleanup;
 
 	rc = Esys_LoadExternal(esys_context,
@@ -729,7 +705,7 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	if (!__tss_check_error(rc, "Esys_VerifySignature failed"))
 		goto cleanup;
 
-	if (!esys_create_primary(&primary_handle))
+	if (!esys_create_primary(esys_context, &primary_handle))
 		goto cleanup;
 
 	rc = Esys_Load(esys_context, primary_handle,
@@ -741,7 +717,7 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 
 
 	/* Create a policy session */
-	if (!esys_start_auth_session(TPM2_SE_POLICY, &session_handle))
+	if (!esys_start_auth_session(esys_context, TPM2_SE_POLICY, &session_handle))
 		goto cleanup;
 
 	TPM2B_DIGEST empty_digest = { .size = 0 };
@@ -773,10 +749,10 @@ cleanup:
 		free(public_key_name);
 	if (pcr_policy_hash)
 		free(pcr_policy_hash);
-	esys_flush_context(&pub_key_handle);
-	esys_flush_context(&session_handle);
-	esys_flush_context(&primary_handle);
-	esys_flush_context(&sealed_object_handle);
+	esys_flush_context(esys_context, &pub_key_handle);
+	esys_flush_context(esys_context, &session_handle);
+	esys_flush_context(esys_context, &primary_handle);
+	esys_flush_context(esys_context, &sealed_object_handle);
 	return okay;
 }
 
@@ -808,9 +784,8 @@ __pcr_policy_sign(const tpm_rsa_key_t *rsa_key, const TPM2B_DIGEST *authorized_p
 	return true;
 }
 
-
-bool
-__pcr_policy_create_authorized(const tpm_pcr_selection_t *pcr_selection, const char *rsakey_path, TPM2B_DIGEST **ret_digest_p)
+static bool
+__pcr_policy_create_authorized(ESYS_CONTEXT *esys_context, const tpm_pcr_selection_t *pcr_selection, const char *rsakey_path, TPM2B_DIGEST **ret_digest_p)
 {
 	tpm_pcr_bank_t zero_bank;
 	TPM2B_DIGEST *pcr_policy = NULL;
@@ -826,10 +801,10 @@ __pcr_policy_create_authorized(const tpm_pcr_selection_t *pcr_selection, const c
 	 * interested in. */
 	pcr_bank_initialize(&zero_bank, pcr_selection->pcr_mask, pcr_selection->algo_info);
 	pcr_bank_init_from_zero(&zero_bank);
-	if (!(pcr_policy = __pcr_policy_make(&zero_bank)))
+	if (!(pcr_policy = __pcr_policy_make(esys_context, &zero_bank)))
 		goto out;
 
-	okay = esys_create_authorized_policy(pcr_policy, pub_key, ret_digest_p);
+	okay = esys_create_authorized_policy(esys_context, pcr_policy, pub_key, ret_digest_p);
 
 out:
 	if (pcr_policy)
@@ -871,10 +846,11 @@ cleanup:
 bool
 pcr_authorized_policy_create(const tpm_pcr_selection_t *pcr_selection, const char *rsakey_path, const char *output_path)
 {
+	ESYS_CONTEXT *esys_context = tss_esys_context();
 	TPM2B_DIGEST *authorized_policy = NULL;
 	bool ok;
 
-	ok = __pcr_policy_create_authorized(pcr_selection, rsakey_path, &authorized_policy);
+	ok = __pcr_policy_create_authorized(esys_context, pcr_selection, rsakey_path, &authorized_policy);
 	if (ok && write_digest(output_path, authorized_policy))
 		infomsg("Authorized policy written to %s\n", output_path?: "(standard output)");
 
@@ -887,6 +863,7 @@ pcr_authorized_policy_create(const tpm_pcr_selection_t *pcr_selection, const cha
 bool
 pcr_authorized_policy_seal_secret(const char *authpolicy_path, const char *input_path, const char *output_path)
 {
+	ESYS_CONTEXT *esys_context = tss_esys_context();
 	TPM2B_DIGEST *authorized_policy = NULL;
 	TPM2B_SENSITIVE_DATA *secret = NULL;
 	TPM2B_PRIVATE *sealed_private = NULL;
@@ -903,10 +880,10 @@ pcr_authorized_policy_seal_secret(const char *authpolicy_path, const char *input
 	/* On my machine, the TPM needs 20 seconds to derive the SRK in CreatePrimary */
 	infomsg("Sealing secret - this may take a moment\n");
 
-	if (!esys_create_primary(&srk_handle))
+	if (!esys_create_primary(esys_context, &srk_handle))
 		goto cleanup;
 
-	if (!esys_create(srk_handle, authorized_policy, secret, &sealed_private, &sealed_public))
+	if (!esys_create(esys_context, srk_handle, authorized_policy, secret, &sealed_private, &sealed_public))
 		goto cleanup;
 
 	ok = write_sealed_secret(output_path, sealed_public, sealed_private);
@@ -924,7 +901,7 @@ cleanup:
 	if (secret)
 		free_secret(secret);
 
-	esys_flush_context(&srk_handle);
+	esys_flush_context(esys_context, &srk_handle);
 	return ok;
 }
 
@@ -936,6 +913,7 @@ cleanup:
 bool
 pcr_policy_sign(const tpm_pcr_bank_t *bank, const char *rsakey_path, const char *output_path)
 {
+	ESYS_CONTEXT *esys_context = tss_esys_context();
 	TPM2B_DIGEST *pcr_policy = NULL;
 	tpm_rsa_key_t *rsa_key = NULL;
 	TPM2B_PUBLIC *pub_key = NULL;
@@ -945,7 +923,7 @@ pcr_policy_sign(const tpm_pcr_bank_t *bank, const char *rsakey_path, const char 
 	if (!(rsa_key = tpm_rsa_key_read_private(rsakey_path)))
 		goto out;
 
-	if (!(pcr_policy = __pcr_policy_make(bank)))
+	if (!(pcr_policy = __pcr_policy_make(esys_context, bank)))
 		goto out;
 
 	if (!__pcr_policy_sign(rsa_key, pcr_policy, &signed_policy))
@@ -981,6 +959,7 @@ pcr_authorized_policy_unseal_secret(const tpm_pcr_selection_t *pcr_selection,
 				const char *rsakey_path,
                                 const char *input_path, const char *output_path)
 {
+	ESYS_CONTEXT *esys_context = tss_esys_context();
 	tpm_pcr_bank_t pcr_current_bank;
 	TPM2B_DIGEST *authorized_policy = NULL;
 	TPMT_SIGNATURE *policy_signature = NULL;
@@ -1010,7 +989,9 @@ pcr_authorized_policy_unseal_secret(const tpm_pcr_selection_t *pcr_selection,
 	pcr_bank_init_from_current(&pcr_current_bank);
 
 	/* Now we've got all the ingredients we need. Go for it. */
-	okay = esys_unseal_authorized(authorized_policy, &pcr_current_bank, policy_signature, pub_key, sealed_public, sealed_private, &unsealed);
+	okay = esys_unseal_authorized(esys_context,
+			authorized_policy, &pcr_current_bank, policy_signature, pub_key,
+			sealed_public, sealed_private, &unsealed);
 
 	if (unsealed) {
 		buffer_t *bp = buffer_alloc_write(unsealed->size);
