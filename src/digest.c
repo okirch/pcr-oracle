@@ -132,6 +132,21 @@ digest_print_value(const tpm_evdigest_t *md)
 	return buffer;
 }
 
+void
+digest_set(tpm_evdigest_t *md, const tpm_algo_info_t *algo_info,
+		unsigned int size, const void *data)
+{
+	if (size > sizeof(md->data))
+		fatal("%s: hash value for %s too large (%u bytes)\n",
+				__func__, algo_info->openssl_name,
+				size);
+
+	memset(md, 0, sizeof(*md));
+	md->algo = algo_info;
+	md->size = size;
+	memcpy(md->data, data, size);
+}
+
 const tpm_evdigest_t *
 digest_compute(const tpm_algo_info_t *algo_info, const void *data, unsigned int size)
 {
