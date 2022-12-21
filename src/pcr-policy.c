@@ -438,7 +438,6 @@ __pcr_bank_hash(const tpm_pcr_bank_t *bank, TPM2B_DIGEST **hash_ret, TPML_PCR_SE
 	if (!(esys_context = tss_esys_context()))
 		return false;
 
-	debug("%s(%s)\n", __func__, bank->algo_name);
 	rc = Esys_HashSequenceStart(esys_context, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
 			&null_auth,
 			bank->algo_info->tcg_id,
@@ -459,7 +458,6 @@ __pcr_bank_hash(const tpm_pcr_bank_t *bank, TPM2B_DIGEST **hash_ret, TPML_PCR_SE
 		pcr_value.size = d->size;
 		memcpy(pcr_value.buffer, d->data, d->size);
 
-		debug("hashing PCR %s:%u\n", bank->algo_name, i);
 		rc = Esys_SequenceUpdate(esys_context, sequence_handle,
 				ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
 				&pcr_value);
@@ -936,7 +934,9 @@ pcr_authorized_policy_seal_secret(const char *authpolicy_path, const char *input
 	if (!(authorized_policy = read_digest(authpolicy_path)))
 		goto cleanup;
 
+	/* On my machine, the TPM needs 20 seconds to derive the SRK in CreatePrimary */
 	infomsg("Sealing secret - this may take a moment\n");
+
 	if (!esys_create_primary(&srk_handle))
 		goto cleanup;
 
@@ -1038,6 +1038,9 @@ pcr_authorized_policy_unseal_secret(const tpm_pcr_selection_t *pcr_selection,
 
 	if (!read_signature(signed_policy_path, &policy_signature))
 		goto cleanup;
+
+	/* On my machine, the TPM needs 20 seconds to derive the SRK in CreatePrimary */
+	infomsg("Unsealing secret - this may take a moment\n");
 
 	pcr_bank_initialize(&pcr_current_bank, pcr_selection->pcr_mask, pcr_selection->algo_info);
 	pcr_bank_init_from_current(&pcr_current_bank);

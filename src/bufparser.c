@@ -69,7 +69,7 @@ buffer_read_file(const char *filename, int flags)
 	if (closeit)
 		close(fd);
 
-	debug("Read %u bytes from %s\n", count, filename);
+	debug2("Read %u bytes from %s\n", count, filename);
 	bp->wpos = count;
 	return bp;
 }
@@ -101,6 +101,6 @@ buffer_write_file(const char *filename, buffer_t *bp)
 	if (closeit)
 		close(fd);
 
-	// debug("Wrote %u bytes to %s\n", written, filename);
+	debug2("Wrote %u bytes to %s\n", written, filename);
 	return true;
 }
