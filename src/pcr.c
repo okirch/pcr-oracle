@@ -32,6 +32,49 @@
 #include "digest.h"
 #include "testcase.h"
 
+bool
+pcr_selection_valid_string(const char *pcr_spec)
+{
+	unsigned int pcr_mask;
+
+	if (pcr_spec == NULL)
+		return false;
+	return !strcmp(pcr_spec, "all") || parse_pcr_mask(pcr_spec, &pcr_mask);
+}
+
+tpm_pcr_selection_t *
+pcr_selection_new(const char *algo_name, const char *pcr_spec)
+{
+	tpm_pcr_selection_t *selection;
+	const tpm_algo_info_t *	algo_info;
+	unsigned int pcr_mask;
+
+	if (!strcmp(pcr_spec, "all")) {
+		pcr_mask = ~0U;
+	} else
+	if (!parse_pcr_mask(pcr_spec, &pcr_mask)) {
+                error("Unable to parse PCR mask \"%s\"\n", pcr_spec);
+		return NULL;
+	}
+
+	algo_info = digest_by_name(algo_name? : "sha256");
+	if (algo_info == NULL) {
+		error("Hash algorithm \"%s\" not supported\n", algo_name);
+		return NULL;
+	}
+
+	selection = calloc(1, sizeof(*selection));
+	selection->algo_info = algo_info;
+	selection->pcr_mask = pcr_mask;
+	return selection;
+}
+
+void
+pcr_selection_free(tpm_pcr_selection_t *selection)
+{
+	free(selection);
+}
+
 void
 pcr_bank_initialize(tpm_pcr_bank_t *bank, unsigned int pcr_mask, const tpm_algo_info_t *algo)
 {
