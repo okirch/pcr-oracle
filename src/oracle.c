@@ -37,6 +37,7 @@ enum {
 	ACTION_NONE,
 	ACTION_PREDICT,
 	ACTION_CREATE_AUTH_POLICY,
+	ACTION_STORE_PUBLIC_KEY,
 	ACTION_SEAL,
 	ACTION_UNSEAL,
 	ACTION_SIGN
@@ -78,7 +79,8 @@ enum {
 	OPT_VERIFY,
 	OPT_CREATE_TESTCASE,
 	OPT_REPLAY_TESTCASE,
-	OPT_RSA_KEY,
+	OPT_RSA_PRIVATE_KEY,
+	OPT_RSA_PUBLIC_KEY,
 	OPT_INPUT,
 	OPT_OUTPUT,
 	OPT_AUTHORIZED_POLICY,
@@ -101,7 +103,8 @@ static struct option options[] = {
 	{ "create-testcase",	required_argument,	0,	OPT_CREATE_TESTCASE },
 	{ "replay-testcase",	required_argument,	0,	OPT_REPLAY_TESTCASE },
 
-	{ "rsa-key",		required_argument,	0,	OPT_RSA_KEY },
+	{ "private-key",	required_argument,	0,	OPT_RSA_PRIVATE_KEY },
+	{ "public-key",		required_argument,	0,	OPT_RSA_PUBLIC_KEY },
 	{ "input",		required_argument,	0,	OPT_INPUT },
 	{ "output",		required_argument,	0,	OPT_OUTPUT },
 	{ "authorized-policy",	required_argument,	0,	OPT_AUTHORIZED_POLICY },
@@ -884,6 +887,7 @@ get_action_argument(int argc, char **argv)
 	} actions[] = {
 		{ "predict",			ACTION_PREDICT	},
 		{ "create-authorized-policy",	ACTION_CREATE_AUTH_POLICY	},
+		{ "store-public-key",		ACTION_STORE_PUBLIC_KEY	 },
 		{ "seal-secret",		ACTION_SEAL	},
 		{ "unseal-secret",		ACTION_UNSEAL	},
 		{ "sign",			ACTION_SIGN	},
@@ -947,7 +951,8 @@ main(int argc, char **argv)
 	char *opt_output = NULL;
 	char *opt_authorized_policy = NULL;
 	char *opt_pcr_policy = NULL;
-	char *opt_rsa_key = NULL;
+	char *opt_rsa_private_key = NULL;
+	char *opt_rsa_public_key = NULL;
 	int c, exit_code = 0;
 
 	while ((c = getopt_long(argc, argv, "dhA:CF:LSZ", options, NULL)) != EOF) {
@@ -997,8 +1002,11 @@ main(int argc, char **argv)
 		case OPT_REPLAY_TESTCASE:
 			opt_replay_testcase = optarg;
 			break;
-		case OPT_RSA_KEY:
-			opt_rsa_key = optarg;
+		case OPT_RSA_PRIVATE_KEY:
+			opt_rsa_private_key = optarg;
+			break;
+		case OPT_RSA_PUBLIC_KEY:
+			opt_rsa_public_key = optarg;
 			break;
 		case OPT_INPUT:
 			opt_input = optarg;
@@ -1037,13 +1045,21 @@ main(int argc, char **argv)
 		end_arguments(argc, argv);
 		break;
 
+	case ACTION_STORE_PUBLIC_KEY:
+		if (opt_rsa_private_key == NULL)
+			usage(1, "You need to specify the RSA secret key using --private-key option\n");
+		if (opt_rsa_public_key == NULL)
+			opt_rsa_public_key = opt_output;
+		end_arguments(argc, argv);
+		break;
+
 	case ACTION_CREATE_AUTH_POLICY:
 		if (opt_input != NULL)
 			warning("Ignoring --input option when creating authorized policy\n");
 		if (opt_output != NULL)
 			warning("Ignoring --output option when creating authorized policy\n");
-		if (opt_rsa_key == NULL)
-			usage(1, "You need to specify the --rsa-key option when creating an authorized policy\n");
+		if (opt_rsa_private_key == NULL)
+			usage(1, "You need to specify the --private-key option when creating an authorized policy\n");
 		pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
 		end_arguments(argc, argv);
 		break;
@@ -1056,8 +1072,8 @@ main(int argc, char **argv)
 
 	case ACTION_UNSEAL:
 		if (opt_authorized_policy) {
-			if (opt_rsa_key == NULL)
-				usage(1, "You need to specify the --rsa-key option when unsealing using an authorized policy\n");
+			if (opt_rsa_public_key == NULL)
+				usage(1, "You need to specify the --public-key option when unsealing using an authorized policy\n");
 			if (opt_pcr_policy == NULL)
 				usage(1, "You need to specify the --pcr-policy option when unsealing using an authorized policy\n");
 			pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
@@ -1066,8 +1082,8 @@ main(int argc, char **argv)
 		break;
 
 	case ACTION_SIGN:
-		if (opt_rsa_key == NULL)
-			usage(1, "You need to specify the --rsa-key option when signing a policy\n");
+		if (opt_rsa_private_key == NULL)
+			usage(1, "You need to specify the --private-key option when signing a policy\n");
 		pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
 		end_arguments(argc, argv);
 		break;
@@ -1075,9 +1091,15 @@ main(int argc, char **argv)
 	}
 
 	if (action == ACTION_CREATE_AUTH_POLICY) {
-		if (!pcr_authorized_policy_create(pcr_selection, opt_rsa_key, opt_authorized_policy))
+		if (!pcr_authorized_policy_create(pcr_selection, opt_rsa_private_key, opt_authorized_policy))
 			return 1;
 
+		return 0;
+	}
+
+	if (action == ACTION_STORE_PUBLIC_KEY) {
+		if (!pcr_store_public_key(opt_rsa_private_key, opt_rsa_public_key))
+			return 1;
 		return 0;
 	}
 
@@ -1093,7 +1115,7 @@ main(int argc, char **argv)
 	if (action == ACTION_UNSEAL) {
 		if (opt_authorized_policy) {
 			/* input is the sealed secret, output is the cleartext */
-			if (!pcr_authorized_policy_unseal_secret(pcr_selection, opt_authorized_policy, opt_pcr_policy, opt_rsa_key, opt_input, opt_output))
+			if (!pcr_authorized_policy_unseal_secret(pcr_selection, opt_authorized_policy, opt_pcr_policy, opt_rsa_public_key, opt_input, opt_output))
 				return 1;
 		} else {
 			fatal("Unseal using plain PCR policy not implemented\n");
@@ -1123,7 +1145,7 @@ main(int argc, char **argv)
 		fatal("Sealing against a set of PCR values not yet implemented.\n");
 	} else
 	if (action == ACTION_SIGN) {
-		if (!pcr_policy_sign(&pred->prediction, opt_rsa_key, opt_output))
+		if (!pcr_policy_sign(&pred->prediction, opt_rsa_private_key, opt_output))
 			return 1;
 	}
 

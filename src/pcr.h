@@ -56,6 +56,7 @@ extern void		pcr_selection_free(tpm_pcr_selection_t *);
 
 extern bool		pcr_authorized_policy_create(const tpm_pcr_selection_t *pcr_selection,
 				const char *rsakey_path, const char *output_path);
+extern bool		pcr_store_public_key(const char *rsakey_path, const char *output_path);
 extern bool		pcr_policy_sign(const tpm_pcr_bank_t *bank,
 				const char *rsakey_path, const char *output_path);
 extern bool		pcr_authorized_policy_seal_secret(const char *authorized_policy,

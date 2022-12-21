@@ -286,6 +286,50 @@ read_signature(const char *path, TPMT_SIGNATURE **ret)
 	return ok;
 }
 
+static bool
+write_public_key(const char *path, const TPM2B_PUBLIC *s)
+{
+	buffer_t *bp;
+	int rc;
+	bool ok = false;
+
+	bp = buffer_alloc_write(sizeof(*s) + 128);
+
+	rc = Tss2_MU_TPM2B_PUBLIC_Marshal(s, bp->data, bp->size, &bp->wpos);
+	if (!__tss_check_error(rc, "Tss2_MU_TPM2B_PUBLIC_Marshal failed"))
+		goto cleanup;
+
+	ok = runtime_write_file(path, bp);
+
+cleanup:
+	buffer_free(bp);
+	return ok;
+}
+
+static bool
+read_public_key(const char *path, TPM2B_PUBLIC **ret)
+{
+	TPM2B_PUBLIC *pub_key;
+	buffer_t *bp;
+	int rc;
+	bool ok = false;
+
+	if (!(bp = buffer_read_file(path, 0)))
+		return false;
+
+	pub_key = calloc(1, sizeof(*pub_key));
+	rc = Tss2_MU_TPM2B_PUBLIC_Unmarshal(bp->data, bp->size, &bp->rpos, pub_key);
+	if (__tss_check_error(rc, "Tss2_MU_TPM2B_PUBLIC_Unmarshal failed")) {
+		*ret = pub_key;
+		ok = true;
+	} else {
+		free(pub_key);
+	}
+
+	buffer_free(bp);
+	return ok;
+}
+
 static ESYS_CONTEXT *
 tss_esys_context(void)
 {
@@ -798,6 +842,32 @@ out:
 	return okay;
 }
 
+/*
+ * Store the public portion of an RSA key in a format compatible
+ * with TSS2. This should make it easier to implement the loading
+ * in a boot loader (where you do NOT want to handle PEM/DER/ASN.1)
+ */
+bool
+pcr_store_public_key(const char *rsakey_path, const char *output_path)
+{
+	tpm_rsa_key_t *rsa_key = NULL;
+	TPM2B_PUBLIC *pub_key = NULL;
+	bool okay = false;
+
+	if (!(rsa_key = tpm_rsa_key_read_private(rsakey_path))
+	 || !(pub_key = tpm_rsa_key_to_tss2(rsa_key)))
+		goto cleanup;
+
+	okay = write_public_key(output_path, pub_key);
+
+cleanup:
+	if (rsa_key)
+		tpm_rsa_key_free(rsa_key);
+	if (pub_key)
+		free(pub_key);
+	return okay;
+}
+
 bool
 pcr_authorized_policy_create(const tpm_pcr_selection_t *pcr_selection, const char *rsakey_path, const char *output_path)
 {
@@ -921,9 +991,7 @@ pcr_authorized_policy_unseal_secret(const tpm_pcr_selection_t *pcr_selection,
 	TPM2B_SENSITIVE_DATA *unsealed = NULL;
 	bool okay = false;
 
-	/* FIXME: public key */
-	if (!(rsa_key = tpm_rsa_key_read_private(rsakey_path))
-	 || !(pub_key = tpm_rsa_key_to_tss2(rsa_key)))
+	if (!read_public_key(rsakey_path, &pub_key))
 		goto cleanup;
 
 	if (!(authorized_policy = read_digest(authpolicy_path)))

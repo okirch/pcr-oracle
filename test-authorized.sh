@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# This script needs to be run with root privilege
+#
 
 # TESTDIR=policy.test
 PCR_MASK=0,2,4,12
@@ -35,9 +38,14 @@ if [ ! -f policy-key.pem ]; then
 fi
 
 call_oracle \
-	--rsa-key policy-key.pem \
+	--private-key policy-key.pem \
 	--auth authorized.policy \
 	create-authorized-policy $PCR_MASK
+
+call_oracle \
+	--private-key policy-key.pem \
+	--public-key policy-pubkey \
+	store-public-key
 
 call_oracle \
 	--auth authorized.policy \
@@ -48,7 +56,7 @@ call_oracle \
 for attempt in first second; do
 	echo "Sign the set of PCRs we want to authorize"
 	call_oracle \
-		--rsa-key policy-key.pem \
+		--private-key policy-key.pem \
 		--from current \
 		--output signed.policy \
 		sign $PCR_MASK
@@ -58,7 +66,7 @@ for attempt in first second; do
 		--auth authorized.policy \
 		--input sealed \
 		--output recovered \
-		--rsa-key policy-key.pem \
+		--public-key policy-pubkey \
 		--pcr-policy signed.policy \
 		unseal-secret $PCR_MASK
 
@@ -84,7 +92,7 @@ for attempt in first second; do
 		--auth authorized.policy \
 		--input sealed \
 		--output recovered \
-		--rsa-key policy-key.pem \
+		--private-key policy-key.pem \
 		--pcr-policy signed.policy \
 		unseal-secret $PCR_MASK || true
 
