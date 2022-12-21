@@ -54,13 +54,13 @@ extern bool		pcr_selection_valid_string(const char *);
 extern tpm_pcr_selection_t *pcr_selection_new(const char *algo_name, const char *pcr_spec);
 extern void		pcr_selection_free(tpm_pcr_selection_t *);
 
-extern bool		pcr_authorized_policy_create(unsigned int pcr_mask, const tpm_algo_info_t *algo,
+extern bool		pcr_authorized_policy_create(const tpm_pcr_selection_t *pcr_selection,
 				const char *rsakey_path, const char *output_path);
 extern bool		pcr_policy_sign(const tpm_pcr_bank_t *bank,
 				const char *rsakey_path, const char *output_path);
 extern bool		pcr_authorized_policy_seal_secret(const char *authorized_policy,
 				const char *input_path, const char *output_path);
-extern bool		pcr_authorized_policy_unseal_secret(unsigned int pcr_mask, const tpm_algo_info_t *algo,
+extern bool		pcr_authorized_policy_unseal_secret(const tpm_pcr_selection_t *pcr_selection,
 				const char *authorized_policy,
 				const char *signed_policy_path,
 				const char *rsakey_path,

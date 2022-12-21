@@ -869,7 +869,7 @@ __pcr_policy_sign(const tpm_rsa_key_t *rsa_key, const TPM2B_DIGEST *authorized_p
 
 
 bool
-__pcr_policy_create_authorized(unsigned int pcr_mask, const tpm_algo_info_t *algo, const char *rsakey_path, TPM2B_DIGEST **ret_digest_p)
+__pcr_policy_create_authorized(const tpm_pcr_selection_t *pcr_selection, const char *rsakey_path, TPM2B_DIGEST **ret_digest_p)
 {
 	tpm_pcr_bank_t zero_bank;
 	TPM2B_DIGEST *pcr_policy = NULL;
@@ -883,7 +883,7 @@ __pcr_policy_create_authorized(unsigned int pcr_mask, const tpm_algo_info_t *alg
 
 	/* Create a PCR policy using all-zeros for the selection of PCRs we're
 	 * interested in. */
-	pcr_bank_initialize(&zero_bank, pcr_mask, algo);
+	pcr_bank_initialize(&zero_bank, pcr_selection->pcr_mask, pcr_selection->algo_info);
 	pcr_bank_init_from_zero(&zero_bank);
 	if (!(pcr_policy = __pcr_policy_make(&zero_bank)))
 		goto out;
@@ -902,12 +902,12 @@ out:
 }
 
 bool
-pcr_authorized_policy_create(unsigned int pcr_mask, const tpm_algo_info_t *algo, const char *rsakey_path, const char *output_path)
+pcr_authorized_policy_create(const tpm_pcr_selection_t *pcr_selection, const char *rsakey_path, const char *output_path)
 {
 	TPM2B_DIGEST *authorized_policy = NULL;
 	bool ok;
 
-	ok = __pcr_policy_create_authorized(pcr_mask, algo, rsakey_path, &authorized_policy);
+	ok = __pcr_policy_create_authorized(pcr_selection, rsakey_path, &authorized_policy);
 	if (ok && write_digest(output_path, authorized_policy))
 		infomsg("Authorized policy written to %s\n", output_path?: "(standard output)");
 
@@ -1005,7 +1005,7 @@ out:
  * The code is here mostly for educational/testing purposes.
  */
 bool
-pcr_authorized_policy_unseal_secret(unsigned int pcr_mask, const tpm_algo_info_t *algo,
+pcr_authorized_policy_unseal_secret(const tpm_pcr_selection_t *pcr_selection,
 				const char *authpolicy_path,
 				const char *signed_policy_path,
 				const char *rsakey_path,
@@ -1035,7 +1035,7 @@ pcr_authorized_policy_unseal_secret(unsigned int pcr_mask, const tpm_algo_info_t
 	if (!read_signature(signed_policy_path, &policy_signature))
 		goto cleanup;
 
-	pcr_bank_initialize(&pcr_current_bank, pcr_mask, algo);
+	pcr_bank_initialize(&pcr_current_bank, pcr_selection->pcr_mask, pcr_selection->algo_info);
 	pcr_bank_init_from_current(&pcr_current_bank);
 
 	/* Now we've got all the ingredients we need. Go for it. */

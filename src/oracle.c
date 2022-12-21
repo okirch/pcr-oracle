@@ -212,7 +212,7 @@ predictor_load_eventlog(struct predictor *pred)
 }
 
 static struct predictor *
-predictor_new(unsigned int pcr_mask, const char *source, const char *algo_name, const char *output_format)
+predictor_new(const tpm_pcr_selection_t *pcr_selection, const char *source, const char *output_format)
 {
 	struct predictor *pred;
 
@@ -220,13 +220,11 @@ predictor_new(unsigned int pcr_mask, const char *source, const char *algo_name, 
 		source = "zero";
 
 	pred = calloc(1, sizeof(*pred));
-	pred->pcr_mask = pcr_mask;
+	pred->pcr_mask = pcr_selection->pcr_mask;
 	pred->initial_source = source;
 
-	pred->algo = algo_name? : "sha256";
-	pred->algo_info = digest_by_name(pred->algo);
-	if (pred->algo_info == NULL)
-		fatal("Digest algorithm %s not implemented\n");
+	pred->algo = pcr_selection->algo_info->openssl_name;
+	pred->algo_info = pcr_selection->algo_info;
 
 	if (!output_format || !strcasecmp(output_format, "plain"))
 		pred->report_fn = predictor_report_plain;
@@ -239,8 +237,11 @@ predictor_new(unsigned int pcr_mask, const char *source, const char *algo_name, 
 	else
 		fatal("Unsupported output format \"%s\"\n", output_format);
 
-	debug("Initializing predictor for %s:%s from %s\n", pred->algo, print_pcr_mask(pcr_mask), source);
-	pcr_bank_load_initial_values(&pred->prediction, pcr_mask, pred->algo_info, source);
+	debug("Initializing predictor for %s:%s from %s\n", pred->algo, print_pcr_mask(pred->pcr_mask), source);
+	pcr_bank_load_initial_values(&pred->prediction,
+			pcr_selection->pcr_mask,
+			pcr_selection->algo_info,
+			source);
 
 	if (!strcmp(source, "eventlog"))
 		predictor_load_eventlog(pred);
@@ -859,30 +860,19 @@ predictor_report_binary(struct predictor *pred, unsigned int pcr_index)
 		fatal("failed to write hash to stdout");
 }
 
-/*
- * Parse a pcr-mask argument
- */
-static bool
-try_parse_pcr_mask(const char *word, unsigned int *mask_ret)
-{
-	if (!strcmp(word, "all")) {
-		*mask_ret = ~0U;
-		if (ima_is_active()) {
-			infomsg("Excluding PCR 10 from prediction (used by IMA)\n");
-			*mask_ret &= ~(1 << 10);
-		}
-		return true;
-	}
-
-	return parse_pcr_mask(word, mask_ret);
-}
-
 static const char *
 next_argument(int argc, char **argv)
 {
 	if (optind >= argc)
 		usage(1, "Missing argument(s)");
 	return argv[optind++];
+}
+
+static void
+end_arguments(int argc, char **argv)
+{
+	if (optind < argc)
+		usage(1, "Excess argument(s)");
 }
 
 static int
@@ -900,7 +890,7 @@ get_action_argument(int argc, char **argv)
 
 		{ NULL, 0 },
 	};
-	unsigned int i, pcr_mask;
+	unsigned int i;
 	const char *word;
 
 	word = next_argument(argc, argv);
@@ -910,8 +900,8 @@ get_action_argument(int argc, char **argv)
 			return actions[i].value;
 	}
 
-	if (try_parse_pcr_mask(word, &pcr_mask)) {
-		/* Backward compat: predict and display */
+	/* Backward compat: predict and display */
+	if (pcr_selection_valid_string(word)) {
 		optind -= 1;
 		return ACTION_PREDICT;
 	}
@@ -921,27 +911,30 @@ get_action_argument(int argc, char **argv)
 	return ACTION_NONE;
 }
 
-static unsigned int
-get_pcr_mask_argument(int argc, char ** argv)
+static tpm_pcr_selection_t *
+get_pcr_selection_argument(int argc, char ** argv, const char *algo_name)
 {
-	unsigned int pcr_mask;
+	tpm_pcr_selection_t *pcr_selection;
 	const char *word;
 
 	word = next_argument(argc, argv);
-	if (!try_parse_pcr_mask(word, &pcr_mask)) {
-		error("Unable to parse PCR mask \"%s\"\n", word);
-		usage(1, "Bad value for PCR argument");
+	if ((pcr_selection = pcr_selection_new(algo_name, word)) == NULL)
+		usage(1, NULL);
+
+	if ((pcr_selection->pcr_mask & (1 << 10)) && ima_is_active()) {
+		infomsg("Excluding PCR 10 from prediction (used by IMA)\n");
+		pcr_selection->pcr_mask &= ~(1 << 10);
 	}
 
-	return pcr_mask;
+	return pcr_selection;
 }
 
 int
 main(int argc, char **argv)
 {
-	unsigned int pcr_mask;
 	struct predictor *pred;
 	int action = ACTION_NONE;
+	tpm_pcr_selection_t *pcr_selection;
 	char *opt_from = NULL;
 	char *opt_algo = NULL;
 	char *opt_output_format = NULL;
@@ -1040,6 +1033,8 @@ main(int argc, char **argv)
 	/* Validate options */
 	switch (action) {
 	case ACTION_PREDICT:
+		pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
+		end_arguments(argc, argv);
 		break;
 
 	case ACTION_CREATE_AUTH_POLICY:
@@ -1049,11 +1044,14 @@ main(int argc, char **argv)
 			warning("Ignoring --output option when creating authorized policy\n");
 		if (opt_rsa_key == NULL)
 			usage(1, "You need to specify the --rsa-key option when creating an authorized policy\n");
-		/* end_arguments(); */
+		pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
+		end_arguments(argc, argv);
 		break;
 
 	case ACTION_SEAL:
-		/* end_arguments(); */
+		if (opt_authorized_policy == NULL)
+			pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
+		end_arguments(argc, argv);
 		break;
 
 	case ACTION_UNSEAL:
@@ -1062,33 +1060,22 @@ main(int argc, char **argv)
 				usage(1, "You need to specify the --rsa-key option when unsealing using an authorized policy\n");
 			if (opt_pcr_policy == NULL)
 				usage(1, "You need to specify the --pcr-policy option when unsealing using an authorized policy\n");
+			pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
 		}
-		/* end_arguments(); */
+		end_arguments(argc, argv);
 		break;
 
 	case ACTION_SIGN:
 		if (opt_rsa_key == NULL)
 			usage(1, "You need to specify the --rsa-key option when signing a policy\n");
-		/* end_arguments(); */
+		pcr_selection = get_pcr_selection_argument(argc, argv, opt_algo);
+		end_arguments(argc, argv);
 		break;
 
 	}
 
 	if (action == ACTION_CREATE_AUTH_POLICY) {
-		const tpm_algo_info_t *algo_info;
-
-		pcr_mask = get_pcr_mask_argument(argc, argv);
-
-		algo_info = digest_by_name(opt_algo? : "sha256");
-		if (algo_info == NULL)
-			fatal("You requested an unknown hash algorithm, sorry\n");
-
-		if (opt_input != NULL)
-			warning("Ignoring --input option when creating authorized policy\n");
-		if (opt_output != NULL)
-			warning("Ignoring --output option when creating authorized policy\n");
-
-		if (!pcr_authorized_policy_create(pcr_mask, algo_info, opt_rsa_key, opt_authorized_policy))
+		if (!pcr_authorized_policy_create(pcr_selection, opt_rsa_key, opt_authorized_policy))
 			return 1;
 
 		return 0;
@@ -1105,16 +1092,8 @@ main(int argc, char **argv)
 
 	if (action == ACTION_UNSEAL) {
 		if (opt_authorized_policy) {
-			const tpm_algo_info_t *algo_info;
-
-			pcr_mask = get_pcr_mask_argument(argc, argv);
-
-			algo_info = digest_by_name(opt_algo? : "sha256");
-			if (algo_info == NULL)
-				fatal("You requested an unknown hash algorithm, sorry\n");
-
 			/* input is the sealed secret, output is the cleartext */
-			if (!pcr_authorized_policy_unseal_secret(pcr_mask, algo_info, opt_authorized_policy, opt_pcr_policy, opt_rsa_key, opt_input, opt_output))
+			if (!pcr_authorized_policy_unseal_secret(pcr_selection, opt_authorized_policy, opt_pcr_policy, opt_rsa_key, opt_input, opt_output))
 				return 1;
 		} else {
 			fatal("Unseal using plain PCR policy not implemented\n");
@@ -1126,8 +1105,7 @@ main(int argc, char **argv)
 	if (opt_stop_event && (!opt_from || strcmp(opt_from, "eventlog")))
 		usage(1, "--stop-event only makes sense when using event log");
 
-	pcr_mask = get_pcr_mask_argument(argc, argv);
-	pred = predictor_new(pcr_mask, opt_from, opt_algo, opt_output_format);
+	pred = predictor_new(pcr_selection, opt_from, opt_output_format);
 
 	if (opt_stop_event)
 		predictor_set_stop_event(pred, opt_stop_event, !opt_stop_before);
