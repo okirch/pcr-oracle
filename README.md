@@ -59,8 +59,6 @@ by this example can be used directly with the --pcr option of
 
 ## NEW: Using Authorized Policies
 
--- NOTE: UNDER HEAVY DEVELOPMENT --
-
 Using a set of PCR values to seal a secret directly is a challenge
 when dealing with updates of software components of grub, the shim
 loader, etc - because these updates change the outcome of the PCR
@@ -105,17 +103,11 @@ plus its copy of the files from the grub package, sign these
 values and return the signature to the managed node.
 
 So far, pcr-oracle does not yet implement this mode of operation.
-However, it already supports the creationg of, and sealing against,
+However, it already supports the creation of, and sealing against,
 authorized policies.
 
-Here's how to do it:
-
-pcr-oracle --rsa-key policy-key.pem --auth authorized.policy \
-	create-authorized-policy 0,2,4
-pcr-oracle --auth authorized.policy --in secret --out sealed \
-	seal-secret
-pcr-oracle --sign-policy --rsa-key policy-key.pem 0,2,4 \
-	--out pcr-policy.signed
+For an example of how to use pcr-oracle with authorized policies,
+please refer to test-authorized.sh
 
 
 ## Generate and submit test cases
