@@ -403,11 +403,6 @@ __pcr_selection_build(TPML_PCR_SELECTION *sel, const tpm_pcr_bank_t *bank)
 	for (i = 0; i < 3; ++i, pcr_mask >>= 8) {
 		bankSel->pcrSelect[i] = pcr_mask & 0xFF;
 	}
-	debug("%s: bank hash 0x%x select %02x:%02x:%02x\n", __func__, 
-			bankSel->hash,
-			bankSel->pcrSelect[0],
-			bankSel->pcrSelect[1],
-			bankSel->pcrSelect[2]);
 	return true;
 }
 
@@ -769,7 +764,6 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	if (!(pcr_policy = __pcr_policy_make(bank)))
 		goto cleanup;
 
-	debug("TP%u\n", __LINE__);
 	rc = Esys_LoadExternal(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, NULL,
 			pub_key, TPM2_RH_OWNER,
@@ -781,7 +775,6 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	if (!__tss_check_error(rc, "Esys_TR_GetName failed"))
 		goto cleanup;
 
-	debug("TP%u\n", __LINE__);
 	rc = Esys_Hash(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
 			(const TPM2B_MAX_BUFFER *) pcr_policy,
@@ -790,7 +783,6 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	if (!__tss_check_error(rc, "Esys_Hash failed"))
 		goto cleanup;
 
-	debug("TP%u\n", __LINE__);
 	rc = Esys_VerifySignature(esys_context,
 			pub_key_handle,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
@@ -802,7 +794,6 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	if (!esys_create_primary(&primary_handle))
 		goto cleanup;
 
-	debug("TP%u\n", __LINE__);
 	rc = Esys_Load(esys_context, primary_handle,
 		ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
 		sealed_private, sealed_public,
@@ -815,7 +806,6 @@ esys_unseal_authorized(const TPM2B_DIGEST *authorized_policy,
 	if (!esys_start_auth_session(TPM2_SE_POLICY, &session_handle))
 		goto cleanup;
 
-	debug("TP%u\n", __LINE__);
 	TPM2B_DIGEST empty_digest = { .size = 0 };
 	rc = Esys_PolicyPCR(esys_context, session_handle,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,

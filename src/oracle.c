@@ -78,16 +78,11 @@ enum {
 	OPT_VERIFY,
 	OPT_CREATE_TESTCASE,
 	OPT_REPLAY_TESTCASE,
-
-	/* This should probably be a standalone command */
 	OPT_RSA_KEY,
 	OPT_INPUT,
 	OPT_OUTPUT,
 	OPT_AUTHORIZED_POLICY,
 	OPT_PCR_POLICY,
-//	OPT_SEAL_SECRET,
-//	OPT_CREATE_AUTHORIZED_POLICY,
-//	OPT_SIGN_POLICY,
 };
 
 static struct option options[] = {
@@ -106,13 +101,9 @@ static struct option options[] = {
 	{ "create-testcase",	required_argument,	0,	OPT_CREATE_TESTCASE },
 	{ "replay-testcase",	required_argument,	0,	OPT_REPLAY_TESTCASE },
 
-//	{ "create-authorized-policy",
-//				no_argument,		0,	OPT_CREATE_AUTHORIZED_POLICY },
-//	{ "sign-policy",	no_argument,		0,	OPT_SIGN_POLICY },
 	{ "rsa-key",		required_argument,	0,	OPT_RSA_KEY },
 	{ "input",		required_argument,	0,	OPT_INPUT },
 	{ "output",		required_argument,	0,	OPT_OUTPUT },
-//	{ "seal-secret",	no_argument,		0,	OPT_SEAL_SECRET },
 	{ "authorized-policy",	required_argument,	0,	OPT_AUTHORIZED_POLICY },
 	{ "pcr-policy",		required_argument,	0,	OPT_PCR_POLICY },
 
@@ -1016,15 +1007,6 @@ main(int argc, char **argv)
 		case OPT_RSA_KEY:
 			opt_rsa_key = optarg;
 			break;
-//		case OPT_CREATE_AUTHORIZED_POLICY:
-//			opt_create_authpolicy = true;
-//			break;
-//		case OPT_SEAL_SECRET:
-//			opt_seal_secret = true;
-//			break;
-//		case OPT_SIGN_POLICY:
-//			opt_sign_policy = true;
-//			break;
 		case OPT_INPUT:
 			opt_input = optarg;
 			break;
@@ -1061,6 +1043,10 @@ main(int argc, char **argv)
 		break;
 
 	case ACTION_CREATE_AUTH_POLICY:
+		if (opt_input != NULL)
+			warning("Ignoring --input option when creating authorized policy\n");
+		if (opt_output != NULL)
+			warning("Ignoring --output option when creating authorized policy\n");
 		if (opt_rsa_key == NULL)
 			usage(1, "You need to specify the --rsa-key option when creating an authorized policy\n");
 		/* end_arguments(); */
@@ -1156,7 +1142,7 @@ main(int argc, char **argv)
 	} else
 	if (action == ACTION_SEAL) {
 		/* TBD - seal secret against a set of PCR values */
-		fatal("blah\n");
+		fatal("Sealing against a set of PCR values not yet implemented.\n");
 	} else
 	if (action == ACTION_SIGN) {
 		if (!pcr_policy_sign(&pred->prediction, opt_rsa_key, opt_output))
