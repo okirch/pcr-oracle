@@ -211,26 +211,11 @@ pcr_bank_init_from_snapshot(tpm_pcr_bank_t *bank, const char *efivar_path)
 	pcr_bank_init_from_snapshot_fp(fp, bank);
 }
 
-static void
-fapi_error(const char *func, int rc)
-{
-	fatal("TPM2: function %s returns %d\n", func, rc);
-}
-
 void
 pcr_bank_init_from_current(tpm_pcr_bank_t *bank)
 {
-	const char *algo_name = bank->algo_name;
-	FAPI_CONTEXT *context = NULL;
-	uint8_t *digests[8] = { NULL };
-	size_t digest_sizes[8] = { 0 };
 	unsigned int i;
-	int rc;
 	FILE *recording, *playback;
-
-	if (strcmp(algo_name, "sha256"))
-		fatal("Cannot initialize from current TPM values for digest algorithm %s - not implemented\n",
-				algo_name);
 
 	playback = runtime_maybe_playback_pcrs();
 	if (playback) {
@@ -238,46 +223,23 @@ pcr_bank_init_from_current(tpm_pcr_bank_t *bank)
 		return;
 	}
 
-	rc = Fapi_Initialize(&context, NULL);
-	if (rc != 0)
-		fapi_error("Fapi_Initialize", rc);
+	if (!pcr_read_into_bank(bank))
+		fatal("Unable to read current PCR values from TPM\n");
 
-	recording = runtime_maybe_record_pcrs();
+	if ((recording = runtime_maybe_record_pcrs()) != NULL) {
+		const char *algo_name = bank->algo_info->openssl_name;
 
-	for (i = 0; i < 24; ++i) {
-		tpm_evdigest_t *pcr;
+		for (i = 0; i < 24; ++i) {
+			tpm_evdigest_t *pcr;
 
-		if (!(pcr = pcr_bank_get_register(bank, i, "sha256")))
-			continue;
+			if (!pcr_bank_register_is_valid(bank, i))
+				continue;
 
-		/* FIXME: how does this function select a PCR bank?
-		 * The answer is: it doesn't. The proper way to obtain current
-		 * values for eg sha1 would be to use ESYS_PCR_Read() instead.
-		 */
-		rc = Fapi_PcrRead(context, i, digests, digest_sizes, NULL);
-		if (rc)
-			fapi_error("Fapi_PcrRead", rc);
-
-		if (pcr->size != digest_sizes[0])
-			fatal("Could not initialize predictor for PCR %s:%u: initial hash value has size %u (expected %u)\n",
-					algo_name, i,
-					(int) digest_sizes[0], pcr->size);
-		memcpy(pcr->data, digests[0], pcr->size);
-
-		if (digest_is_invalid(pcr)) {
-			if (opt_debug > 1)
-				debug("ignoring PCR %u; %s\n", i, digest_print(pcr));
-			continue;
+			pcr = pcr_bank_get_register(bank, i, NULL);
+			fprintf(recording, "%02u %s %s\n", i, algo_name, digest_print_value(pcr));
 		}
 
-		pcr_bank_mark_valid(bank, i);
-		Fapi_Free(digests[0]);
-
-		if (recording)
-			fprintf(recording, "%02u sha256 %s\n", i, digest_print_value(pcr));
-	}
-
-	if (recording)
 		fclose(recording);
+	}
 }
 

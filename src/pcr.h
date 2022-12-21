@@ -24,7 +24,7 @@
 #include "types.h"
 #include "digest.h"
 
-#define PCR_BANK_REGISTER_MAX	32
+#define PCR_BANK_REGISTER_MAX	24
 
 typedef struct tpm_pcr_bank {
 	uint32_t		pcr_mask;
@@ -54,6 +54,7 @@ extern bool		pcr_selection_valid_string(const char *);
 extern tpm_pcr_selection_t *pcr_selection_new(const char *algo_name, const char *pcr_spec);
 extern void		pcr_selection_free(tpm_pcr_selection_t *);
 
+extern bool		pcr_read_into_bank(tpm_pcr_bank_t *bank);
 extern bool		pcr_authorized_policy_create(const tpm_pcr_selection_t *pcr_selection,
 				const char *rsakey_path, const char *output_path);
 extern bool		pcr_store_public_key(const char *rsakey_path, const char *output_path);

@@ -227,6 +227,7 @@ read_sealed_secret(const char *path, TPM2B_PUBLIC **pub_ret, TPM2B_PRIVATE **pri
 		*pub_ret = pub;
 		ok = true;
 	} else {
+		error("%s does not seem to contain a valid pair of public/private sealed data\n", path);
 		free(priv);
 		free(pub);
 	}
@@ -323,6 +324,7 @@ read_public_key(const char *path, TPM2B_PUBLIC **ret)
 		*ret = pub_key;
 		ok = true;
 	} else {
+		error("%s does not seem to contain a valid public key\n", path);
 		free(pub_key);
 	}
 
@@ -385,27 +387,32 @@ esys_flush_context(ESYS_CONTEXT *esys_context, ESYS_TR *session_handle_p)
 }
 
 static bool
-__pcr_selection_build(TPML_PCR_SELECTION *sel, const tpm_pcr_bank_t *bank)
+__pcr_selection_build(TPML_PCR_SELECTION *sel, unsigned int pcr_mask, const tpm_algo_info_t *algo_info)
 {
 	TPMS_PCR_SELECTION *bankSel;
-	const tpm_algo_info_t *algo_info;
-	uint32_t pcr_mask, i;
+	uint32_t i;
 
 	memset(sel, 0, sizeof(*sel));
 
-	pcr_mask = bank->valid_mask;
+	/* 24 pcrs at most */
+	pcr_mask &= 0xFFFFFF;
 	if (pcr_mask == 0)
 		return true;
 
 	bankSel = &sel->pcrSelections[sel->count++];
 
-	algo_info = digest_by_name(bank->algo_name);
 	bankSel->hash = algo_info->tcg_id;
 	bankSel->sizeofSelect = 3;
 	for (i = 0; i < 3; ++i, pcr_mask >>= 8) {
 		bankSel->pcrSelect[i] = pcr_mask & 0xFF;
 	}
 	return true;
+}
+
+static bool
+pcr_bank_to_selection(TPML_PCR_SELECTION *sel, const tpm_pcr_bank_t *bank)
+{
+	return __pcr_selection_build(sel, bank->valid_mask, bank->algo_info);
 }
 
 static void
@@ -519,7 +526,7 @@ __pcr_policy_make(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank)
 	TPM2B_DIGEST *pcrDigest = NULL;
 	TPM2B_DIGEST *result = NULL;
 
-	if (!__pcr_selection_build(&pcrSel, bank))
+	if (!pcr_bank_to_selection(&pcrSel, bank))
 		return NULL;
 
 	if (!__pcr_bank_hash(esys_context, bank, &pcrDigest, &pcrSel)) {
@@ -674,7 +681,7 @@ esys_unseal_authorized(ESYS_CONTEXT *esys_context,
 	if (policy_signature->signature.rsassa.hash != TPM2_ALG_SHA256)
 		warning("%s: bad hash %x\n", __func__, policy_signature->signature.rsassa.hash);
 
-	__pcr_selection_build(&pcrs, bank);
+	pcr_bank_to_selection(&pcrs, bank);
 	if (!(pcr_policy = __pcr_policy_make(esys_context, bank)))
 		goto cleanup;
 
@@ -813,6 +820,91 @@ out:
 		free(pub_key);
 	if (rsa_key)
 		tpm_rsa_key_free(rsa_key);
+
+	return okay;
+}
+
+/*
+ * This implements the ESYS backend for pcr_bank_init_from_current
+ * The previous implementation used FAPI and that's just messy.
+ */
+bool
+pcr_read_into_bank(tpm_pcr_bank_t *bank)
+{
+	ESYS_CONTEXT *esys_context = tss_esys_context();
+	TPML_PCR_SELECTION pcr_selection;
+	TPML_DIGEST *pcr_values = NULL;
+	unsigned int pcr_chunk_offset;
+	unsigned int index, k;
+	bool okay = false;
+	TPM2_RC rc;
+
+	/* TPML_DIGEST will hold only up to 8 digests, which means
+	 * if we're interested in more PCRs, we need to do them in
+	 * chunks of 8 or less.
+	 */
+	for (pcr_chunk_offset = 0; pcr_chunk_offset < PCR_BANK_REGISTER_MAX; pcr_chunk_offset += 8) {
+		unsigned int pcr_mask;
+
+		pcr_mask = bank->pcr_mask & (0xFFU << pcr_chunk_offset);
+		if (pcr_mask == 0)
+			continue;
+
+		/* drop the values from previous iteration */
+		if (pcr_values) {
+			free(pcr_values);
+			pcr_values = NULL;
+		}
+
+		/* We cannot use pcr_bank_to_selection here, because that function
+		 * only selects digests for those PCRs that are valid. We haven't read
+		 * any PCR values yet, so we need to consult the mask of PCRs
+		 * that we *want* to have */
+		if (!__pcr_selection_build(&pcr_selection, pcr_mask, bank->algo_info))
+			return false;
+
+		debug2("Trying to read PCR chunk starting with PCR %u\n", pcr_chunk_offset);
+		rc = Esys_PCR_Read(esys_context,
+				ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
+				&pcr_selection, NULL, NULL, &pcr_values);
+		if (!__tss_check_error(rc, "Esys_PCR_Read failed"))
+			goto cleanup;
+
+		for (index = 0, k = 0; index < PCR_BANK_REGISTER_MAX; ++index) {
+			TPM2B_DIGEST *d;
+
+			if (!(pcr_mask & (1 << index)))
+				continue;
+
+			d = &pcr_values->digests[k++];
+			if (d->size == 0)
+				continue;
+
+			if (d->size != bank->algo_info->digest_size) {
+				error("Esys_PCR_Read returns a %s digest with size %u (expected %u)\n",
+						bank->algo_info->openssl_name,
+						d->size,
+						bank->algo_info->digest_size);
+				debug("PCR %u value %u size 0x%x\n", index, k, d->size);
+				goto cleanup;
+			}
+
+			tpm_evdigest_t *pcr = &bank->pcr[index];
+
+			digest_set(pcr, bank->algo_info, d->size, d->buffer);
+			if (digest_is_invalid(pcr)) {
+				debug2("ignoring PCR %u; %s\n", index, digest_print(pcr));
+			} else {
+				pcr_bank_mark_valid(bank, index);
+			}
+		}
+	}
+
+	okay = true;
+
+cleanup:
+	if (pcr_values)
+		free(pcr_values);
 
 	return okay;
 }

@@ -3,7 +3,7 @@ PKGNAME		= pcr-oracle-0.3
 CCOPT		= -O0 -g
 FIRSTBOOTDIR	= /usr/share/jeos-firstboot
 CFLAGS		= -Wall -I /usr/include/tss2 $(CCOPT)
-TSS2_LINK	= -ltss2-esys -ltss2-tctildr -ltss2-fapi -ltss2-rc -ltss2-mu -lcrypto
+TSS2_LINK	= -ltss2-esys -ltss2-tctildr -ltss2-rc -ltss2-mu -lcrypto
 TOOLS		= pcr-oracle
 
 ORACLE_SRCS	= oracle.c \

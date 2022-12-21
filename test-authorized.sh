@@ -92,7 +92,7 @@ for attempt in first second; do
 		--auth authorized.policy \
 		--input sealed \
 		--output recovered \
-		--private-key policy-key.pem \
+		--public-key policy-pubkey \
 		--pcr-policy signed.policy \
 		unseal-secret $PCR_MASK || true
 

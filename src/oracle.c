@@ -815,10 +815,12 @@ predictor_verify(struct predictor *pred, const char *source)
 static void
 predictor_report(struct predictor *pred)
 {
+	const tpm_pcr_bank_t *bank = &pred->prediction;
 	unsigned int pcr_index;
 
 	for (pcr_index = 0; pcr_index < PCR_BANK_REGISTER_MAX; ++pcr_index) {
-		pred->report_fn(pred, pcr_index);
+		if (pcr_bank_register_is_valid(bank, pcr_index))
+			pred->report_fn(pred, pcr_index);
 	}
 }
 
