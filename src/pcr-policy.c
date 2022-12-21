@@ -286,44 +286,6 @@ read_signature(const char *path, TPMT_SIGNATURE **ret)
 	return ok;
 }
 
-#if 0
-static TSS2_TCTI_CONTEXT *
-__tss_find_tcti(void)
-{
-	TSS2_TCTI_CONTEXT *ctx = NULL;
-	TSS2_RC rc;
-
-	rc = Tss2_TctiLdr_Initialize(NULL, &ctx);
-	if (!__tss_check_error(rc, "Unable to create TCTI context"))
-		return NULL;
-
-	return ctx;
-}
-
-static TSS2_SYS_CONTEXT *
-tss_sys_context_new(void)
-{
-	size_t context_size;
-	TSS2_TCTI_CONTEXT *tcti_ctx;
-	TSS2_SYS_CONTEXT *esys_ctx;
-	TSS2_RC rc;
-
-	if (!(tcti_ctx = __tss_find_tcti()))
-		return NULL;
-
-	context_size = Tss2_Sys_GetContextSize(0);
-	esys_ctx = calloc(1, context_size);
-	rc = Tss2_Sys_Initialize(esys_ctx, context_size, tcti_ctx, NULL);
-
-	if (!__tss_check_error(rc, "Unable to initialize TSS2 Sys context")) {
-		free(esys_ctx);
-		return NULL;
-	}
-
-	return esys_ctx;
-}
-#endif
-
 static ESYS_CONTEXT *
 tss_esys_context(void)
 {
@@ -540,72 +502,6 @@ __pcr_policy_make(const tpm_pcr_bank_t *bank)
 		free(pcrDigest);
 	return result;
 }
-
-#if 0
-static inline TPM2B_PUBLIC *
-__rsa_pubkey_alloc(void)
-{
-	TPM2B_PUBLIC *result;
-
-	result = calloc(1, sizeof(*result));
-	result->size = sizeof(result->publicArea);
-	result->publicArea.type = TPM2_ALG_RSA;
-	result->publicArea.nameAlg = TPM2_ALG_SHA256;
-	result->publicArea.objectAttributes = TPMA_OBJECT_DECRYPT | TPMA_OBJECT_SIGN_ENCRYPT | TPMA_OBJECT_USERWITHAUTH;
-
-	TPMS_RSA_PARMS *rsaDetail = &result->publicArea.parameters.rsaDetail;
-	rsaDetail->scheme.scheme = TPM2_ALG_NULL;
-	rsaDetail->symmetric.algorithm = TPM2_ALG_NULL;
-	rsaDetail->scheme.details.anySig.hashAlg = TPM2_ALG_NULL;
-
-	/* NULL out sym details */
-	TPMT_SYM_DEF_OBJECT *sym = &rsaDetail->symmetric;
-	sym->algorithm = TPM2_ALG_NULL;
-	sym->keyBits.sym = 0;
-	sym->mode.sym = TPM2_ALG_NULL;
-
-	return result;
-}
-
-static inline TPM2B_PUBLIC *
-rsa_pubkey_alloc(const BIGNUM *n, const BIGNUM *e, const char *pathname)
-{
-	TPM2B_PUBLIC *result;
-	unsigned int key_bits;
-
-	key_bits = BN_num_bytes(n) * 8;
-	if (key_bits != 1024 && key_bits != 2048 && key_bits != 4096) {
-		error("%s: unsupported RSA key size (%u bits)\n", pathname, key_bits);
-		return NULL;
-	}
-
-	if (BN_num_bytes(e) > sizeof(((TPMS_RSA_PARMS *) 0)->exponent)) {
-		error("%s: unsupported RSA modulus size (%u bits)\n", pathname, BN_num_bytes(e) * 8);
-		return NULL;
-	}
-
-	if (!(result = __rsa_pubkey_alloc()))
-		return NULL;
-
-	TPMS_RSA_PARMS *rsaDetail = &result->publicArea.parameters.rsaDetail;
-	rsaDetail->keyBits = key_bits;
-
-	TPM2B_PUBLIC_KEY_RSA *rsaPublic = &result->publicArea.unique.rsa;
-	rsaPublic->size = BN_num_bytes(n);
-
-	if (!BN_bn2bin(n, rsaPublic->buffer))
-		goto failed;
-
-	if (!BN_bn2bin(e, (void *) &rsaDetail->exponent))
-		goto failed;
-
-	return result;
-
-failed:
-	free(result);
-	return NULL;
-}
-#endif
 
 static bool
 esys_create_authorized_policy(TPM2B_DIGEST *pcrPolicy, const TPM2B_PUBLIC *pubKey,
