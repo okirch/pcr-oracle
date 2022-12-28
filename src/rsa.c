@@ -35,21 +35,6 @@ struct tpm_rsa_key {
 	EVP_PKEY *	pkey;
 };
 
-static tpm_rsa_key_t *
-tpm_rsa_key_alloc(const char *path, RSA *rsa_key, bool priv)
-{
-	tpm_rsa_key_t *key;
-
-	key = calloc(1, sizeof(*key));
-	key->is_private = priv;
-
-	key->pkey = EVP_PKEY_new();
-	EVP_PKEY_assign_RSA(key->pkey, rsa_key);
-
-	key->path = strdup(path);
-	return key;
-}
-
 void
 tpm_rsa_key_free(tpm_rsa_key_t *key)
 {
@@ -62,22 +47,39 @@ tpm_rsa_key_free(tpm_rsa_key_t *key)
 tpm_rsa_key_t *
 tpm_rsa_key_read_public(const char *pathname)
 {
-	RSA *key;
+	tpm_rsa_key_t *key = NULL;
 	FILE *fp;
+
+	key = calloc(1, sizeof(*key));
+	key->is_private = false;
 
 	if (!(fp = fopen(pathname, "r"))) {
 		error("Cannot read RSA private key from %s: %m\n", pathname);
-		return NULL;
+		goto fail;
 	}
-	key = PEM_read_RSA_PUBKEY(fp, NULL, NULL, NULL);
+	key->pkey = PEM_read_PUBKEY(fp, NULL, NULL, NULL);
 	fclose(fp);
 
-	if (key == NULL) {
+	if (key->pkey == NULL) {
 		error("Failed to parse RSA public key from %s\n", pathname);
-		return NULL;
+		goto fail;
 	}
 
-	return tpm_rsa_key_alloc(pathname, key, false);
+	if (EVP_PKEY_id(key->pkey) != EVP_PKEY_RSA) {
+		error("Not a RSA public key: %s\n", pathname);
+		goto fail;
+	}
+
+	key->path = strdup(pathname);
+
+	return key;
+fail:
+	if (key) {
+		if (key->pkey)
+			free(key->pkey);
+		free(key);
+	}
+	return NULL;
 }
 
 /*
@@ -87,22 +89,39 @@ tpm_rsa_key_read_public(const char *pathname)
 tpm_rsa_key_t *
 tpm_rsa_key_read_private(const char *pathname)
 {
-	RSA *key;
+	tpm_rsa_key_t *key = NULL;
 	FILE *fp;
+
+	key = calloc(1, sizeof(*key));
+	key->is_private = true;
 
 	if (!(fp = fopen(pathname, "r"))) {
 		error("Cannot read RSA private key from %s: %m\n", pathname);
-		return NULL;
+		goto fail;
 	}
-	key = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
+	key->pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL);
 	fclose(fp);
 
-	if (key == NULL) {
+	if (key->pkey == NULL) {
 		error("Failed to parse RSA private key from %s\n", pathname);
-		return NULL;
+		goto fail;
 	}
 
-	return tpm_rsa_key_alloc(pathname, key, true);
+	if (EVP_PKEY_id(key->pkey) != EVP_PKEY_RSA) {
+		error("Not a RSA private key: %s\n", pathname);
+		goto fail;
+	}
+
+	key->path = strdup(pathname);
+
+	return key;
+fail:
+	if (key) {
+		if (key->pkey)
+			free(key->pkey);
+		free(key);
+	}
+	return NULL;
 }
 
 int
