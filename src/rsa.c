@@ -25,6 +25,10 @@
 #include <openssl/pem.h>
 #include <tss2_esys.h>
 
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/core_names.h>
+#endif
+
 #include "util.h"
 #include "rsa.h"
 
@@ -225,6 +229,7 @@ failed:
 TPM2B_PUBLIC *
 tpm_rsa_key_to_tss2(const tpm_rsa_key_t *key)
 {
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
 	RSA *rsa;
 	const BIGNUM *n, *e;
 
@@ -234,6 +239,18 @@ tpm_rsa_key_to_tss2(const tpm_rsa_key_t *key)
 	}
 
 	RSA_get0_key(rsa, &n, &e, NULL);
+#else
+	BIGNUM *n = NULL, *e = NULL;
+
+	if (!EVP_PKEY_get_bn_param(key->pkey, OSSL_PKEY_PARAM_RSA_N, &n)) {
+		error("%s: cannot extract RSA modulus\n", key->path);
+		return NULL;
+	}
+	if (!EVP_PKEY_get_bn_param(key->pkey, OSSL_PKEY_PARAM_RSA_E, &e)) {
+		error("%s: cannot extract RSA exponent\n", key->path);
+		return NULL;
+	}
+#endif
 	return rsa_pubkey_alloc(n, e, key->path);
 }
 
