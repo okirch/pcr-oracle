@@ -474,7 +474,7 @@ __pcr_bank_hash(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank, TPM2B_DI
 	}
 
 	rc = Esys_SequenceComplete(esys_context, sequence_handle,
-			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, TPM2_RH_NULL,
+			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, ESYS_TR_RH_NULL,
 			hash_ret, NULL);
 	sequence_handle = ESYS_TR_NONE;
 
@@ -486,7 +486,7 @@ __pcr_bank_hash(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank, TPM2B_DI
 failed:
 	if (sequence_handle != ESYS_TR_NONE)
 		Esys_SequenceComplete(esys_context, sequence_handle,
-			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, TPM2_RH_NULL,
+			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, ESYS_TR_RH_NULL,
 			NULL, NULL);
 
 	return false;
@@ -556,7 +556,7 @@ esys_create_authorized_policy(ESYS_CONTEXT *esys_context,
 
 	rc = Esys_LoadExternal(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, NULL,
-			pubKey, TPM2_RH_OWNER,
+			pubKey, ESYS_TR_RH_OWNER,
 			&pub_key_handle);
 	if (!__tss_check_error(rc, "Esys_LoadExternal failed"))
 		goto out;
@@ -687,7 +687,7 @@ esys_unseal_authorized(ESYS_CONTEXT *esys_context,
 
 	rc = Esys_LoadExternal(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, NULL,
-			pub_key, TPM2_RH_OWNER,
+			pub_key, ESYS_TR_RH_OWNER,
 			&pub_key_handle);
 	if (!__tss_check_error(rc, "Esys_LoadExternal failed"))
 		goto cleanup;
@@ -699,7 +699,7 @@ esys_unseal_authorized(ESYS_CONTEXT *esys_context,
 	rc = Esys_Hash(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
 			(const TPM2B_MAX_BUFFER *) pcr_policy,
-			TPM2_ALG_SHA256, TPM2_RH_NULL,
+			TPM2_ALG_SHA256, ESYS_TR_RH_NULL,
 			&pcr_policy_hash, NULL);
 	if (!__tss_check_error(rc, "Esys_Hash failed"))
 		goto cleanup;
