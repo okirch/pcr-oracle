@@ -443,6 +443,10 @@ __pcr_bank_hash(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank, TPM2B_DI
 
 	memset(pcr_sel, 0, sizeof(*pcr_sel));
 
+	debug("%s: going to hash PCRs from bank %s (TCG algo id %u)\n", __func__,
+			bank->algo_info->openssl_name,
+			bank->algo_info->tcg_id);
+
 	rc = Esys_HashSequenceStart(esys_context, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
 			&null_auth,
 			bank->algo_info->tcg_id,
@@ -530,7 +534,7 @@ __pcr_policy_make(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank)
 		return NULL;
 
 	if (!__pcr_bank_hash(esys_context, bank, &pcrDigest, &pcrSel)) {
-		debug("__pcr_bank_hash failed");
+		debug("__pcr_bank_hash failed\n");
 		return NULL;
 	}
 
