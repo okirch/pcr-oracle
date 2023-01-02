@@ -38,6 +38,7 @@
 #include "digest.h"
 #include "rsa.h"
 #include "bufparser.h"
+#include "config.h"
 
 static const TPM2B_PUBLIC SRK_template = {
 	.size = sizeof(TPMT_PUBLIC),
@@ -85,6 +86,9 @@ static const TPM2B_PUBLIC seal_public_template = {
             }
         };
 
+
+static uint32_t	esys_tr_rh_null = ~0;
+static uint32_t	esys_tr_rh_owner = ~0;
 
 static bool
 __tss_check_error(int rc, const char *msg)
@@ -343,6 +347,18 @@ tss_esys_context(void)
 		rc = Esys_Initialize(&esys_ctx, NULL, NULL);
 		if (!__tss_check_error(rc, "Unable to initialize TSS2 ESAPI context"))
 			fatal("Aborting.\n");
+
+		/* There's no way to query the library version programmatically, so
+		 * we need to check it in configure. */
+		if (version_string_compare(LIBTSS2_VERSION, "3.1") > 0) {
+			/* debug("Detected tss2-esys library version %s, using new ESYS_TR_RH_* constants\n", LIBTSS2_VERSION); */
+			esys_tr_rh_null = ESYS_TR_RH_NULL;
+			esys_tr_rh_owner = ESYS_TR_RH_OWNER;
+		} else {
+			debug("Detected tss2-esys library version %s, using old TPM2_RH_* constants\n", LIBTSS2_VERSION);
+			esys_tr_rh_null = TPM2_RH_NULL;
+			esys_tr_rh_owner = TPM2_RH_OWNER;
+		}
 	}
 	return esys_ctx;
 }
@@ -478,7 +494,7 @@ __pcr_bank_hash(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank, TPM2B_DI
 	}
 
 	rc = Esys_SequenceComplete(esys_context, sequence_handle,
-			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, ESYS_TR_RH_NULL,
+			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, esys_tr_rh_null,
 			hash_ret, NULL);
 	sequence_handle = ESYS_TR_NONE;
 
@@ -490,7 +506,7 @@ __pcr_bank_hash(ESYS_CONTEXT *esys_context, const tpm_pcr_bank_t *bank, TPM2B_DI
 failed:
 	if (sequence_handle != ESYS_TR_NONE)
 		Esys_SequenceComplete(esys_context, sequence_handle,
-			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, ESYS_TR_RH_NULL,
+			ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, esys_tr_rh_null,
 			NULL, NULL);
 
 	return false;
@@ -560,7 +576,7 @@ esys_create_authorized_policy(ESYS_CONTEXT *esys_context,
 
 	rc = Esys_LoadExternal(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, NULL,
-			pubKey, ESYS_TR_RH_OWNER,
+			pubKey, esys_tr_rh_owner,
 			&pub_key_handle);
 	if (!__tss_check_error(rc, "Esys_LoadExternal failed"))
 		goto out;
@@ -691,7 +707,7 @@ esys_unseal_authorized(ESYS_CONTEXT *esys_context,
 
 	rc = Esys_LoadExternal(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, NULL,
-			pub_key, ESYS_TR_RH_OWNER,
+			pub_key, esys_tr_rh_owner,
 			&pub_key_handle);
 	if (!__tss_check_error(rc, "Esys_LoadExternal failed"))
 		goto cleanup;
@@ -703,7 +719,7 @@ esys_unseal_authorized(ESYS_CONTEXT *esys_context,
 	rc = Esys_Hash(esys_context,
 			ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
 			(const TPM2B_MAX_BUFFER *) pcr_policy,
-			TPM2_ALG_SHA256, ESYS_TR_RH_NULL,
+			TPM2_ALG_SHA256, esys_tr_rh_null,
 			&pcr_policy_hash, NULL);
 	if (!__tss_check_error(rc, "Esys_Hash failed"))
 		goto cleanup;
