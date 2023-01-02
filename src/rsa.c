@@ -25,6 +25,10 @@
 #include <openssl/pem.h>
 #include <tss2_esys.h>
 
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/core_names.h>
+#endif
+
 #include "util.h"
 #include "rsa.h"
 
@@ -34,21 +38,6 @@ struct tpm_rsa_key {
 	char *		path;
 	EVP_PKEY *	pkey;
 };
-
-static tpm_rsa_key_t *
-tpm_rsa_key_alloc(const char *path, RSA *rsa_key, bool priv)
-{
-	tpm_rsa_key_t *key;
-
-	key = calloc(1, sizeof(*key));
-	key->is_private = priv;
-
-	key->pkey = EVP_PKEY_new();
-	EVP_PKEY_assign_RSA(key->pkey, rsa_key);
-
-	key->path = strdup(path);
-	return key;
-}
 
 void
 tpm_rsa_key_free(tpm_rsa_key_t *key)
@@ -62,22 +51,39 @@ tpm_rsa_key_free(tpm_rsa_key_t *key)
 tpm_rsa_key_t *
 tpm_rsa_key_read_public(const char *pathname)
 {
-	RSA *key;
+	tpm_rsa_key_t *key = NULL;
 	FILE *fp;
+
+	key = calloc(1, sizeof(*key));
+	key->is_private = false;
 
 	if (!(fp = fopen(pathname, "r"))) {
 		error("Cannot read RSA private key from %s: %m\n", pathname);
-		return NULL;
+		goto fail;
 	}
-	key = PEM_read_RSA_PUBKEY(fp, NULL, NULL, NULL);
+	key->pkey = PEM_read_PUBKEY(fp, NULL, NULL, NULL);
 	fclose(fp);
 
-	if (key == NULL) {
+	if (key->pkey == NULL) {
 		error("Failed to parse RSA public key from %s\n", pathname);
-		return NULL;
+		goto fail;
 	}
 
-	return tpm_rsa_key_alloc(pathname, key, false);
+	if (EVP_PKEY_id(key->pkey) != EVP_PKEY_RSA) {
+		error("Not a RSA public key: %s\n", pathname);
+		goto fail;
+	}
+
+	key->path = strdup(pathname);
+
+	return key;
+fail:
+	if (key) {
+		if (key->pkey)
+			free(key->pkey);
+		free(key);
+	}
+	return NULL;
 }
 
 /*
@@ -87,22 +93,39 @@ tpm_rsa_key_read_public(const char *pathname)
 tpm_rsa_key_t *
 tpm_rsa_key_read_private(const char *pathname)
 {
-	RSA *key;
+	tpm_rsa_key_t *key = NULL;
 	FILE *fp;
+
+	key = calloc(1, sizeof(*key));
+	key->is_private = true;
 
 	if (!(fp = fopen(pathname, "r"))) {
 		error("Cannot read RSA private key from %s: %m\n", pathname);
-		return NULL;
+		goto fail;
 	}
-	key = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
+	key->pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL);
 	fclose(fp);
 
-	if (key == NULL) {
+	if (key->pkey == NULL) {
 		error("Failed to parse RSA private key from %s\n", pathname);
-		return NULL;
+		goto fail;
 	}
 
-	return tpm_rsa_key_alloc(pathname, key, true);
+	if (EVP_PKEY_id(key->pkey) != EVP_PKEY_RSA) {
+		error("Not a RSA private key: %s\n", pathname);
+		goto fail;
+	}
+
+	key->path = strdup(pathname);
+
+	return key;
+fail:
+	if (key) {
+		if (key->pkey)
+			free(key->pkey);
+		free(key);
+	}
+	return NULL;
 }
 
 int
@@ -206,6 +229,7 @@ failed:
 TPM2B_PUBLIC *
 tpm_rsa_key_to_tss2(const tpm_rsa_key_t *key)
 {
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
 	RSA *rsa;
 	const BIGNUM *n, *e;
 
@@ -215,6 +239,18 @@ tpm_rsa_key_to_tss2(const tpm_rsa_key_t *key)
 	}
 
 	RSA_get0_key(rsa, &n, &e, NULL);
+#else
+	BIGNUM *n = NULL, *e = NULL;
+
+	if (!EVP_PKEY_get_bn_param(key->pkey, OSSL_PKEY_PARAM_RSA_N, &n)) {
+		error("%s: cannot extract RSA modulus\n", key->path);
+		return NULL;
+	}
+	if (!EVP_PKEY_get_bn_param(key->pkey, OSSL_PKEY_PARAM_RSA_E, &e)) {
+		error("%s: cannot extract RSA exponent\n", key->path);
+		return NULL;
+	}
+#endif
 	return rsa_pubkey_alloc(n, e, key->path);
 }
 
