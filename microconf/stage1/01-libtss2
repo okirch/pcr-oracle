@@ -1,0 +1,12 @@
+uc_add_option_with libtss2
+uc_with_libtss2=detect
+
+uc_add_help <<EOH
+
+
+  Override libtss2 detection
+        --with-libtss2=VERSION
+        --without-libtss2
+ 
+EOH
+

@@ -1,4 +1,5 @@
-PKGNAME		= pcr-oracle-0.3
+VERSION		= @PCR_ORACLE_VERSION@
+PKGNAME		= pcr-oracle-$(VERSION)
 
 CCOPT		= -O0 -g
 FIRSTBOOTDIR	= /usr/share/jeos-firstboot

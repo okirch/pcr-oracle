@@ -1,0 +1,73 @@
+#
+# Define builtin options
+#
+
+__uc_long_options=help,verbose,debug,prefix:
+
+function uc_add_option_noarg {
+
+	__uc_long_options+=",$1"
+}
+
+function uc_add_option_path {
+	__uc_long_options+=",$1:"
+}
+
+function uc_add_option_with {
+	__uc_long_options+=",with-$1::"
+	__uc_long_options+=",without-$1"
+}
+
+function uc_add_option_with_nodefault {
+	__uc_long_options+=",with-$1:"
+}
+
+function uc_add_option_enable {
+	__uc_long_options+=",enable-$1,disable-$1"
+
+	case "$2" in
+	true|false)
+		export uc_enable_$1=$2;;
+	"")	export uc_enable_$1=false;;
+	*)
+		uc_fatal "Invalid default \"$2\" for --enable-$1";;
+	esac
+}
+
+for o in libdir arch-libdir libexecdir etcdir bindir mandir; do
+	uc_add_option_path $o
+done
+
+uc_add_option_with_nodefault platform
+uc_add_option_with_nodefault os-vendor
+uc_add_option_noarg always-use-prefix
+uc_add_option_enable manpages true
+uc_add_option_enable static false
+
+uc_add_help <<EOH
+  Override various installation paths:
+        --prefix=PATH (default /usr/local)
+        --libdir=PATH
+        --arch-libdir=PATH (default depends on architecture and OS vendor,
+                usually \$prefix/lib64 or \$prefix/lib)
+        --bindir=PATH (default \$prefix/bin)
+        --etcdir=PATH (default \$prefix/etc)
+        --mandir=PATH (default \$prefix/share/man)
+ 
+  Override platform detection
+        --with-platform=NAME (NAME=linux, macos, freebsd)
+ 
+  Build options
+        --enable-static, --disable-static
+                Do/Do not build static libraries and binaries (default: $uc_enable_static)
+
+  Installation options
+        --enable-manpages, --disable-manpages
+                Do/Do not install manual pages (default: $uc_enable_manpages)
+        --always-use-prefix
+                Fail if an installation directory does not match
+                \$prefix. This can happen with python/ruby, where
+                we try to detect the proper directory to install
+                our python module/ruby gem to.
+
+EOH

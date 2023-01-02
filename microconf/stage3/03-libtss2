@@ -1,0 +1,7 @@
+##################################################################
+# libtss2 versions
+##################################################################
+if [ -z "$uc_with_libtss2" -o "$uc_with_libtss2" = "detect" ]; then
+	uc_pkg_config_check_package tss2-esys
+fi
+

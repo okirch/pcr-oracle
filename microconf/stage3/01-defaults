@@ -1,0 +1,67 @@
+##################################################################
+# Set default paths
+##################################################################
+function __uc_set_variable_default {
+
+	varname=$1
+	def_value=$2
+
+	declare -g $varname
+	eval value="\$$varname"
+
+	if [ -z "$value" ]; then
+		uc_debug "Setting $varname to default value \"$def_value\""
+		export $varname="$def_value"
+	else
+		uc_debug "Not overriding $varname (set to \"$value\")"
+	fi
+}
+
+__uc_default_paths_set=false
+
+function uc_set_default_paths {
+
+	declare -g __uc_default_paths_set
+
+	$__uc_default_paths_set && return 0
+
+	__uc_set_variable_default uc_prefix		"/usr/local"
+	__uc_set_variable_default uc_bindir		"$uc_prefix/bin"
+	__uc_set_variable_default uc_libdir		"$uc_prefix/lib"
+	__uc_set_variable_default uc_includedir		"$uc_prefix/include"
+	__uc_set_variable_default uc_etcdir		"$uc_prefix/etc"
+	__uc_set_variable_default uc_mandir		"$uc_prefix/share/man"
+	__uc_set_variable_default uc_arch_libdir	"$uc_prefix/${__uc_arch_lib:-lib}"
+
+	__uc_set_variable_default uc_enable_manpages	true
+
+	__uc_default_paths_set=true
+}
+
+##################################################################
+# Helper function to check that we're not installing something
+# to a location we should not install it to
+##################################################################
+function uc_check_prefix {
+
+	name=$1
+	value=$2
+
+	$opt_always_use_prefix || return
+
+	case "$value" in
+	"$uc_prefix"/*)
+		return 0;;
+	*)
+		echo "Bad prefix: $name uses $value (but it should start with $uc_prefix)" >&2
+		exit 2
+	esac
+}
+
+##################################################################
+# Actually do set the defaults
+# Should we really do this here, or should we allow the caller to
+# insert something via a pre-hook?
+##################################################################
+uc_set_default_paths
+

@@ -1,4 +1,6 @@
 *.o
 *.swp
+src/config.h
+Makefile
 pcr-oracle
 LOG

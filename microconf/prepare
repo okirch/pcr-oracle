@@ -1,0 +1,205 @@
+# microconf prepare step
+#
+# Copyright (C) 2021 Olaf Kirch <okir@suse.de>
+#
+
+PROGNAME=${0#**/}
+
+uc_sourcedir=$(dirname $0)
+__uc_scriptdir="$uc_sourcedir/microconf"
+
+opt_debug=false
+
+##################################################################
+# Logging helpers
+##################################################################
+function uc_fatal {
+
+	echo "$@" >&2
+	exit 2
+}
+
+function uc_debug {
+
+	$opt_debug && echo "DEBUG: $*" >&2
+}
+
+##################################################################
+# Reset state before doing anything else
+##################################################################
+function uc_clean_slate {
+
+	rm -f "$__uc_scriptdir/sedscript"
+	if [ -d "$uc_sourcedir/.git" ]; then
+		echo "sedscript" > "$__uc_scriptdir/.gitignore"
+	fi
+}
+
+##################################################################
+# Run all scripts belonging to a certain stage
+##################################################################
+function uc_run_stage {
+
+	stage=$1
+
+	for module in "$__uc_scriptdir/$stage/"*-*; do
+		test -f $module || continue
+		uc_debug "Loading $stage/$(basename $module)"
+		. $module
+	done
+}
+
+##################################################################
+# Post-hooks provide a way for a user to receive callbacks
+# from microconf while running any of the checks.
+#
+# These functions need to be defined in parts/prepare, because
+# the user typically wants to call uc_maybe_call_post_hook
+# _after_ prepare and _before_ check
+##################################################################
+function uc_define_post_hook {
+
+	check=$1
+	funcname=$2
+
+	varname=__uc_post_hook_$check
+	declare -g $varname
+	export $varname=$funcname
+}
+
+function uc_maybe_call_post_hook {
+
+	check=$1
+
+	varname=__uc_post_hook_$check
+	declare -g $varname
+
+	eval funcname=\$$varname
+	if [ -n "$funcname" ]; then
+		uc_debug "Calling post-hook \"$check\": $funcname"
+		$funcname
+	fi
+}
+
+##################################################################
+# Define a version variable
+##################################################################
+function uc_define_version {
+
+	varname=$1
+	: ${varname:=version}
+
+	. $uc_sourcedir/RELEASE
+
+	if [ -z "$VERSION" ]; then
+		uc_fatal "Your RELEASE file does not define a VERSION variable"
+	fi
+
+	export uc_$varname="$VERSION"
+
+	major=$(expr "$VERSION" : "\([^.]*\).*")
+	export uc_${varname}_major="$major"
+
+	minor=$(expr "$VERSION" : "[^.]*\.\([^.]*\).*")
+	if [ -n "$minor" ]; then
+		export uc_${varname}_minor="$minor"
+	fi
+}
+
+##################################################################
+# Define a date variable
+##################################################################
+function uc_define_date {
+
+	varname=$1
+	: ${varname:=date}
+
+	. $uc_sourcedir/RELEASE
+
+	if [ -z "$DATE" ]; then
+		DATE=$(date +"%B %Y")
+	fi
+
+	export uc_$varname="$DATE"
+	export uc_date="$DATE"
+}
+
+##################################################################
+# Handle help messages
+##################################################################
+__uc_help_msg=""
+function uc_add_help {
+
+	declare -g __uc_help_msg
+
+	__uc_help_msg+="$(cat)"
+}
+
+function uc_show_help {
+
+	(
+		echo "$PROGNAME help:"
+		echo "$__uc_help_msg"
+	) >&2
+}
+
+##################################################################
+# Stage1:
+#  - register all options
+#  - parse all options
+##################################################################
+uc_clean_slate
+
+uc_run_stage stage1
+
+if ! getopt -Q -l "$__uc_long_options" -o "dv" -- "$@"; then
+	uc_fatal "Error parsing command line options"
+fi
+
+# getopt uses quoting, ie it outputs --prefix '/usr'
+# Using eval gets rid of those single quotes.
+eval set -- $(getopt -n $PROGNAME -l "$__uc_long_options" -o "dv" -- "$@")
+
+opt_verbose=false
+opt_always_use_prefix=false
+
+while [ $# -gt 0 ]; do
+	opt=$1; shift
+
+	case $opt in
+	--help)
+		uc_show_help
+		exit 0;;
+	--verbose|-v)
+		opt_verbose=true;;
+	--debug|-d)
+		opt_debug=true;;
+	--prefix|--libdir|--arch-libdir|--etcdir|--bindir|--mandir)
+		varname=$(expr "$opt" : '^--\(.*\)' | tr - _)
+		export uc_$varname="$1"
+		shift;;
+	--with-*)
+		varname=$(expr "$opt" : "--\(.*\)" | tr - _)
+		export uc_$varname="${1:-detect}"
+		shift;;
+	--without-*)
+		varname=$(expr "$opt" : "--without-\(.*\)" | tr - _)
+		export uc_with_$varname="none";;
+	--enable-*)
+		varname=$(expr "$opt" : "--enable-\(.*\)" | tr - _)
+		export uc_enable_$varname=true;;
+	--disable-*)
+		varname=$(expr "$opt" : "--disable-\(.*\)" | tr - _)
+		export uc_enable_$varname=false;;
+	--always-use-prefix)
+		opt_always_use_prefix=true;;
+	--?*)
+		uc_fatal "Handling for option $opt not implemented";;
+	--)
+		break;;
+	*)
+		echo "$PROGNAME: Unknown option $opt" >&2
+		exit 2
+	esac
+done
+

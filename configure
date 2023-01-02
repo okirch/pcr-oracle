@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+# configure script for pcr-oracle.
+#
+# NOT based on autoconf
+# Copyright (C) 2023 Olaf Kirch <okir@suse.de>
+#
+# In order to prepare the modules needed by this script, you
+# need microconf from github.com/okirch/microconf
+# Simply run microconf in the top-level source directory.
+#
+# Invoke with --help for a description of options
+#
+# microconf:begin
+# require libtss2
+# microconf:end
+
+. microconf/prepare
+
+##################################################################
+# Get version from RELEASE file
+##################################################################
+uc_define_version pcr_oracle_version
+
+##################################################################
+# Now run all the checks we've lined up
+##################################################################
+. microconf/check
+
+##################################################################
+# Perform substitution steps
+##################################################################
+. microconf/subst
+
+uc_subst Makefile
+uc_subst src/config.h

@@ -1,0 +1,14 @@
+# microconf check step
+#
+# Copyright (C) 2021 Olaf Kirch <okir@suse.de>
+#
+
+##################################################################
+# Stage2:
+#  - define functions, if provided in a separate file
+#  - run all checks
+#  - some of the checks may call a post-hook
+##################################################################
+uc_run_stage stage2
+uc_run_stage stage3
+

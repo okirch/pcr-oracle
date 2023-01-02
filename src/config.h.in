@@ -1,0 +1,2 @@
+
+#define LIBTSS2_VERSION		"@WITH_TSS2_ESYS@"

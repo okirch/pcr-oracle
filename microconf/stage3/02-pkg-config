@@ -1,0 +1,81 @@
+##################################################################
+# Detect pkg-config
+##################################################################
+echo -n "Check whether pkg-config is installed... "
+path=$(type -p pkg-config)
+if [ -z "$path" ]; then
+	uc_with_pkg_config=no
+	echo "no"
+else
+	uc_with_pkg_config=yes
+	echo "$path"
+fi
+
+if [ "$uc_with_pkg_config" = "yes" ]; then
+	echo -n "Detecting where to install pkg-config files... "
+	uc_pkg_config_file_path=""
+	for dir in $(pkg-config --variable pc_path pkg-config|tr ':' ' '); do
+		case $dir in
+		"$uc_prefix"/lib*|"$uc_prefix"/share*)
+			: ;;
+		# Skip these directories unless specified by --prefix
+		/usr/local/*|/opt/*)
+			continue;;
+		/*)
+			: ;;
+		esac
+
+		uc_pkg_config_file_path=$dir
+		break
+	done
+
+	if [ -z "$uc_pkg_config_file_path" ]; then
+		echo "not found"
+	else
+		echo "$uc_pkg_config_file_path"
+	fi
+fi
+
+function uc_pkg_config_find_highest_version {
+
+	name=$1
+	pkg-config --list-all | grep "^$name" | while read name blah; do
+		echo "$(pkg-config --modversion $name)/$name"
+	done | tr . ' ' | sort -k1n -k2n -k3n | tr ' /' '. ' | tail -1
+}
+
+function uc_pkg_config_check_package {
+
+	pkgname=$1
+	if [ "$uc_with_pkg_config" != "yes" ]; then
+		uc_fatal "No pkg-config detected, unable to proceed ($pkgname)"
+	fi
+
+	echo -n "Detecting $pkgname version... "
+
+	var_id=$(echo "$pkgname" | tr '.-' '_')
+	export uc_with_$var_id=
+
+	if ! pkg-config $pkgname; then
+		echo "not found" >&2
+		export uc_with_$var_id=none
+		export uc_${var_id}_libdir=
+		export uc_${var_id}_incdir=
+		export uc_${var_id}_cflags=
+		export uc_${var_id}_libs=
+		export uc_define_have_${var_id}=undef
+		return 1
+	fi
+
+	version="$(pkg-config --modversion $pkgname)"
+	echo "$version"
+
+	export uc_with_$var_id="$version"
+	export uc_${var_id}_libdir="$(pkg-config --variable libdir $pkgname)"
+	export uc_${var_id}_incdir="$(pkg-config --variable includedir $pkgname)"
+	export uc_${var_id}_cflags="$(pkg-config --cflags $pkgname)"
+	export uc_${var_id}_libs="$(pkg-config --libs $pkgname)"
+	export uc_define_have_${var_id}=define
+
+	return 0
+}

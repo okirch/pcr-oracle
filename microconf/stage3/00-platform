@@ -1,0 +1,96 @@
+##################################################################
+# Detect platform
+##################################################################
+if [ "$uc_with_platform" ]; then
+	uc_platform="$uc_with_platform"
+else
+	echo -n "Detecting OS platform... "
+	uc_platform=""
+	if [ -z "$uc_platform" ]; then
+		case "$OSTYPE" in
+		"linux-gnu"*|linux*)
+		    uc_platform="linux";;
+		"darwin"*)
+		    uc_platform="macos";;
+		"freebsd"*)
+		    uc_platform="freebsd";;
+		esac
+	fi
+
+	if [ -z "$uc_platform" ]; then
+		case $(uname -a) in
+		Linux*)
+		    uc_platform=linux;;
+		Darwin*)
+		    uc_platform=macos;;
+		FreeBSD*)
+		    uc_platform=freebsd;;
+		esac
+	fi
+
+	if [ -z "$uc_platform" ]; then
+		uc_platform=unknown
+	fi
+	echo $uc_platform
+fi
+
+# Not sure if this is needed
+if [ "$uc_with_os_vendor" ]; then
+	uc_os_vendor="$uc_with_os_vendor"
+else
+	echo -n "Detecting OS vendor... "
+	uc_os_vendor=
+
+	case "$MACHTYPE" in
+	*-suse-*)
+		uc_os_vendor=suse;;
+	*-redhat-*)
+		uc_os_vendor=redhat;;
+	esac
+
+	if [ -n "$uc_os_vendor" ]; then
+		# we're good
+		:
+	elif [ -f "/etc/os-release" ]; then
+		case $(cat /etc/os-release) in
+		*Debian*)
+			uc_os_vendor=debian;;
+		*Fedora*)
+			uc_os_vendor=fedora;;
+		*SUSE*)
+			uc_os_vendor=suse;;
+		*Ubuntu*)
+			uc_os_vendor=ubuntu;;
+		*CentOS*)
+			uc_os_vendor=centos;;
+		esac
+	else
+		sw_vers_path=$(type -p sw_vers)
+		if [ -n "$sw_vers_path" -a -x "$sw_vers_path" ]; then
+			case $(sw_vers) in
+			*macOS*)
+				uc_os_vendor=apple;;
+			esac
+		fi
+	fi
+
+	if [ -z "$uc_os_vendor" ]; then
+		echo "no"
+		echo "Unable to detect platform OS. Build may or may not work" >&2
+		exit 1
+	fi
+
+	echo "$uc_os_vendor"
+fi
+
+##################################################################
+# Detect cpu word size
+##################################################################
+case $(arch) in
+x86_64|aarch64|pp64*|s390x)
+	__uc_arch_lib=lib64;;
+*)
+	__uc_arch_lib=lib;;
+esac
+
+uc_maybe_call_post_hook platform
