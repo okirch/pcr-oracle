@@ -46,6 +46,6 @@ build/%.o: src/%.c
 
 dist:
 	mkdir -p $(PKGNAME)
-	cp -a Makefile README.md src $(PKGNAME)
+	cp -a Makefile.in README.md src configure microconf RELEASE $(PKGNAME)
 	tar cvjf $(PKGNAME).tar.bz2 $(PKGNAME)/*
 	rm -rf $(PKGNAME)
