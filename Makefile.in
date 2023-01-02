@@ -44,8 +44,15 @@ build/%.o: src/%.c
 	@mkdir -p build
 	$(CC) -o $@ $(CFLAGS) -c $<
 
+DIST_FILES = \
+	Makefile.in \
+	src \
+	configure microconf RELEASE \
+	README.md \
+	test-authorized.sh
+
 dist:
 	mkdir -p $(PKGNAME)
-	cp -a Makefile.in README.md src configure microconf RELEASE $(PKGNAME)
+	cp -a $(DIST_FILES) $(PKGNAME)
 	tar cvjf $(PKGNAME).tar.bz2 $(PKGNAME)/*
 	rm -rf $(PKGNAME)
