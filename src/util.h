@@ -135,4 +135,6 @@ extern bool		__convert_to_utf16le(char *in_string, size_t in_bytes, char *out_st
 extern double		timing_begin(void);
 extern double		timing_since(double);
 
+extern int		version_string_compare(const char *, const char *);
+
 #endif /* UTIL_H */

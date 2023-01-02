@@ -329,3 +329,76 @@ timing_since(double since)
 {
 	return relative_timing() - since;
 }
+
+/*
+ * Compare library version numbers.
+ * This is a hack to deal with the ESYS_TR_RH_* changes in upstream libtss2.
+ */
+typedef struct {
+	unsigned int	count;
+	unsigned int	numbers[16];
+} parsed_version_t;
+
+static void
+parse_version(const char *string, parsed_version_t *ver)
+{
+	char *copy, *s;
+
+	memset(ver, 0, sizeof(*ver));
+	copy = strdup(string);
+
+	s = strtok(copy, ".");
+	while (s) {
+		unsigned long n;
+
+		n = strtoul(s, &s, 10);
+		if (*s || n == ULONG_MAX)
+			goto failed;
+
+		if (ver->count > 16)
+			goto failed;
+		ver->numbers[ver->count++] = n;
+
+		s = strtok(NULL, ".");
+	}
+
+	drop_string(&copy);
+	return;
+
+failed:
+	warning("unable to parse complete version string \"%s\"\n", string);
+	drop_string(&copy);
+}
+
+static int
+parsed_version_compare(const parsed_version_t *a, const parsed_version_t *b)
+{
+	unsigned int i;
+	int delta;
+
+	for (i = 0; i < a->count && i < b->count; ++i) {
+		delta = a->numbers[i] - b->numbers[i];
+		if (delta != 0)
+			goto report;
+	}
+
+	delta = (a->count - b->count);
+
+report:
+	if (delta < 0)
+		return -1;
+	if (delta > 0)
+		return 1;
+	return 0;
+}
+
+int
+version_string_compare(const char *ver_a, const char *ver_b)
+{
+	parsed_version_t a, b;
+
+	parse_version(ver_a, &a);
+	parse_version(ver_b, &b);
+
+	return parsed_version_compare(&a, &b);
+}
