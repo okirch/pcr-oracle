@@ -12,6 +12,7 @@
 # Invoke with --help for a description of options
 #
 # microconf:begin
+# version 0.4
 # require libtss2
 # microconf:end
 

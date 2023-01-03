@@ -30,9 +30,6 @@ function uc_debug {
 function uc_clean_slate {
 
 	rm -f "$__uc_scriptdir/sedscript"
-	if [ -d "$uc_sourcedir/.git" ]; then
-		echo "sedscript" > "$__uc_scriptdir/.gitignore"
-	fi
 }
 
 ##################################################################
@@ -89,18 +86,18 @@ function uc_define_version {
 	varname=$1
 	: ${varname:=version}
 
-	. $uc_sourcedir/RELEASE
+	. $__uc_scriptdir/version
 
-	if [ -z "$VERSION" ]; then
-		uc_fatal "Your RELEASE file does not define a VERSION variable"
+	if [ -z "$uc_version" ]; then
+		uc_fatal "Unable to determine the version string of your project"
 	fi
 
-	export uc_$varname="$VERSION"
+	export uc_$varname="$uc_version"
 
-	major=$(expr "$VERSION" : "\([^.]*\).*")
+	major=$(expr "$uc_version" : "\([^.]*\).*")
 	export uc_${varname}_major="$major"
 
-	minor=$(expr "$VERSION" : "[^.]*\.\([^.]*\).*")
+	minor=$(expr "$uc_version" : "[^.]*\.\([^.]*\).*")
 	if [ -n "$minor" ]; then
 		export uc_${varname}_minor="$minor"
 	fi
