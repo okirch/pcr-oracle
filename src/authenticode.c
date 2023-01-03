@@ -36,8 +36,9 @@
 #include "bufparser.h"
 #include "digest.h"
 #include "runtime.h"
+#include "config.h"
 
-#if 1
+#ifdef DEBUG_AUTHENTICODE
 # define pe_debug(args ...) \
 	do { \
 		if (opt_debug > 2) debug(args); \
@@ -304,7 +305,7 @@ __pecoff_get_u32(buffer_t *in, const pecoff_image_info_t *img, unsigned int offs
 	return __pecoff_seek(in, img, offset) && buffer_get_u32le(in, vp);
 }
 
-static const char *
+static inline const char *
 __pecoff_get_machine(const pecoff_image_info_t *img)
 {
 	static struct {

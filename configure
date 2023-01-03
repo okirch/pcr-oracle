@@ -14,6 +14,7 @@
 # microconf:begin
 # version 0.4
 # require libtss2
+# disable debug-authenticode
 # microconf:end
 
 . microconf/prepare

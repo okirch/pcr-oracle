@@ -25,10 +25,11 @@ function uc_add_option_with_nodefault {
 function uc_add_option_enable {
 	__uc_long_options+=",enable-$1,disable-$1"
 
+	var_name=$(echo $1|tr .- _)
 	case "$2" in
 	true|false)
-		export uc_enable_$1=$2;;
-	"")	export uc_enable_$1=false;;
+		export uc_enable_$var_name=$2;;
+	"")	export uc_enable_$var_name=false;;
 	*)
 		uc_fatal "Invalid default \"$2\" for --enable-$1";;
 	esac

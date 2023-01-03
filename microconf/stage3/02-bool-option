@@ -1,0 +1,14 @@
+
+option=debug-authenticode
+option=$(echo $option | tr .- _)
+
+eval value="\$uc_enable_$option"
+: ${value:=false}
+
+if $value; then
+	define=define
+else
+	define=undef
+fi
+
+export uc_define_$option="$define"

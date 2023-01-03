@@ -1,0 +1,11 @@
+uc_add_option_enable debug-authenticode false
+
+uc_add_help <<EOH
+
+
+  User-defined option debug-authenticode (default false)
+        --enable-debug-authenticode
+        --disable-debug-authenticode
+
+EOH
+
