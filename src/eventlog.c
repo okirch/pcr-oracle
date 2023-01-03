@@ -110,13 +110,13 @@ event_log_get_algo_info(tpm_event_log_reader_t *log, unsigned int algo_id)
 }
 
 tpm_event_log_reader_t *
-event_log_open(void)
+event_log_open(const char *override_path)
 {
 	tpm_event_log_reader_t *log;
 
 	log = calloc(1, sizeof(*log));
 	log->tpm_version = 1;
-	log->fd = runtime_open_eventlog();
+	log->fd = runtime_open_eventlog(override_path);
 	return log;
 }
 

@@ -53,6 +53,8 @@ struct predictor {
 	uint32_t		pcr_mask;
 	const char *		initial_source;
 
+	const char *		tpm_event_log_path;
+
 	const char *		algo;
 	const tpm_algo_info_t *	algo_info;
 
@@ -79,6 +81,7 @@ enum {
 	OPT_VERIFY,
 	OPT_CREATE_TESTCASE,
 	OPT_REPLAY_TESTCASE,
+	OPT_TPM_EVENTLOG,
 	OPT_RSA_PRIVATE_KEY,
 	OPT_RSA_PUBLIC_KEY,
 	OPT_INPUT,
@@ -96,6 +99,7 @@ static struct option options[] = {
 	{ "algorithm",		required_argument,	0,	'A' },
 	{ "format",		required_argument,	0,	'F' },
 	{ "stop-event",		required_argument,	0,	OPT_STOP_EVENT },
+	{ "tpm-eventlog",	required_argument,	0,	OPT_TPM_EVENTLOG },
 	{ "after",		no_argument,		0,	OPT_AFTER },
 	{ "before",		no_argument,		0,	OPT_BEFORE },
 	{ "verify",		required_argument,	0,	OPT_VERIFY },
@@ -150,6 +154,8 @@ usage(int exitval, const char *msg)
 		"                         event log before the indicated event. Using the --after option instructs\n"
 		"                         pcr-oracle to stop after processing the event.\n"
 		"  --verify SOURCE        After applying all updates, compare the prediction against the given SOURCE (see below).\n"
+		"  --tpm-eventlog PATH\n"
+		"                         Specify a different TPM event log to process.\n"
 		"\n"
 		"The pcr-index argument can be one or more PCR indices or index ranges, separated by comma.\n"
 		"Using \"all\" selects all applicable PCR registers.\n"
@@ -200,7 +206,7 @@ predictor_load_eventlog(struct predictor *pred)
 	tpm_event_t *ev, **tail;
 	uint8_t pcr0_locality;
 
-	log = event_log_open();
+	log = event_log_open(pred->tpm_event_log_path);
 
 	tail = &pred->event_log;
 	while ((ev = event_log_read_next(log)) != NULL) {
@@ -215,7 +221,9 @@ predictor_load_eventlog(struct predictor *pred)
 }
 
 static struct predictor *
-predictor_new(const tpm_pcr_selection_t *pcr_selection, const char *source, const char *output_format)
+predictor_new(const tpm_pcr_selection_t *pcr_selection, const char *source,
+		const char *tpm_eventlog_path,
+		const char *output_format)
 {
 	struct predictor *pred;
 
@@ -246,8 +254,10 @@ predictor_new(const tpm_pcr_selection_t *pcr_selection, const char *source, cons
 			pcr_selection->algo_info,
 			source);
 
-	if (!strcmp(source, "eventlog"))
+	if (!strcmp(source, "eventlog")) {
+		pred->tpm_event_log_path = tpm_eventlog_path;
 		predictor_load_eventlog(pred);
+	}
 
 	debug("Created new predictor\n");
 	return pred;
@@ -945,6 +955,7 @@ main(int argc, char **argv)
 	char *opt_algo = NULL;
 	char *opt_output_format = NULL;
 	char *opt_stop_event = NULL;
+	char *opt_eventlog_path = NULL;
 	bool opt_stop_before = true;
 	char *opt_verify = NULL;
 	char *opt_create_testcase = NULL;
@@ -988,6 +999,9 @@ main(int argc, char **argv)
 			break;
 		case OPT_STOP_EVENT:
 			opt_stop_event = optarg;
+			break;
+		case OPT_TPM_EVENTLOG:
+			opt_eventlog_path = optarg;
 			break;
 		case OPT_AFTER:
 			opt_stop_before = false;
@@ -1129,7 +1143,8 @@ main(int argc, char **argv)
 	if (opt_stop_event && (!opt_from || strcmp(opt_from, "eventlog")))
 		usage(1, "--stop-event only makes sense when using event log");
 
-	pred = predictor_new(pcr_selection, opt_from, opt_output_format);
+	pred = predictor_new(pcr_selection, opt_from, opt_eventlog_path,
+			opt_output_format);
 
 	if (opt_stop_event)
 		predictor_set_stop_event(pred, opt_stop_event, !opt_stop_before);

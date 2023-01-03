@@ -259,7 +259,7 @@ typedef struct tpm_parsed_event {
 
 typedef struct tpm_event_log_reader tpm_event_log_reader_t;
 
-extern tpm_event_log_reader_t *	event_log_open(void);
+extern tpm_event_log_reader_t *	event_log_open(const char *override_path);
 extern void			event_log_close(tpm_event_log_reader_t *log);
 extern tpm_event_t *		event_log_read_next(tpm_event_log_reader_t *log);
 extern bool			event_log_get_locality(tpm_event_log_reader_t *log, unsigned int pcr_index, uint8_t *loc_p);

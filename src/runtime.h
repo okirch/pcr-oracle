@@ -32,7 +32,7 @@ typedef struct block_dev_io	block_dev_io_t;
 extern file_locator_t *	runtime_locate_file(const char *fs_dev, const char *path);
 extern void		file_locator_free(file_locator_t *);
 extern const char *	file_locator_get_full_path(const file_locator_t *);
-extern int		runtime_open_eventlog(void);
+extern int		runtime_open_eventlog(const char *override_path);
 extern int		runtime_open_ima_measurements(void);
 extern buffer_t *	runtime_read_file(const char *pathname, int flags);
 extern bool		runtime_write_file(const char *pathname, buffer_t *);

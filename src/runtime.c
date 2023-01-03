@@ -180,11 +180,15 @@ runtime_open_sysfs_file(const char *sysfs_path, const char *nickname)
 }
 
 int
-runtime_open_eventlog(void)
+runtime_open_eventlog(const char *override_path)
 {
 	const char *eventlog_path = "/sys/kernel/security/tpm0/binary_bios_measurements";
 
+	if (override_path)
+		eventlog_path = override_path;
+
 	return runtime_open_sysfs_file(eventlog_path, "tpm_measurements");
+
 }
 
 int
