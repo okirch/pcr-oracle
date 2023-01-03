@@ -185,6 +185,18 @@ event_log_read_pcrs_tpm2(tpm_event_log_reader_t *log, tpm_event_t *ev)
 	}
 }
 
+unsigned int
+event_log_get_event_count(const tpm_event_log_reader_t *log)
+{
+	return log->event_count;
+}
+
+unsigned int
+event_log_get_tpm_version(const tpm_event_log_reader_t *log)
+{
+	return log->tpm_version;
+}
+
 tpm_event_t *
 event_log_read_next(tpm_event_log_reader_t *log)
 {

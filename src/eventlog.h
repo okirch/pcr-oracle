@@ -263,6 +263,8 @@ extern tpm_event_log_reader_t *	event_log_open(const char *override_path);
 extern void			event_log_close(tpm_event_log_reader_t *log);
 extern tpm_event_t *		event_log_read_next(tpm_event_log_reader_t *log);
 extern bool			event_log_get_locality(tpm_event_log_reader_t *log, unsigned int pcr_index, uint8_t *loc_p);
+extern unsigned int		event_log_get_event_count(const tpm_event_log_reader_t *log);
+extern unsigned int		event_log_get_tpm_version(const tpm_event_log_reader_t *log);
 extern void			tpm_event_print(tpm_event_t *ev);
 extern void			__tpm_event_print(tpm_event_t *ev, tpm_event_bit_printer *print_fn);
 extern void			tpm_event_log_rehash_ctx_init(tpm_event_log_rehash_ctx_t *,
