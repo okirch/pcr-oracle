@@ -207,6 +207,8 @@ predictor_load_eventlog(struct predictor *pred)
 	uint8_t pcr0_locality;
 
 	log = event_log_open(pred->tpm_event_log_path);
+	if (log == NULL)
+		fatal("Failed to open TPM event log, giving up.\n");
 
 	tail = &pred->event_log;
 	while ((ev = event_log_read_next(log)) != NULL) {

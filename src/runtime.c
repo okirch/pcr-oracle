@@ -183,11 +183,15 @@ int
 runtime_open_eventlog(const char *override_path)
 {
 	const char *eventlog_path = "/sys/kernel/security/tpm0/binary_bios_measurements";
+	int fd;
 
 	if (override_path)
 		eventlog_path = override_path;
 
-	return runtime_open_sysfs_file(eventlog_path, "tpm_measurements");
+	fd = runtime_open_sysfs_file(eventlog_path, "tpm_measurements");
+	if (fd < 0)
+		error("Unable to open TPM event log %s: %m\n", eventlog_path);
+	return fd;
 
 }
 

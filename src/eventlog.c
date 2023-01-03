@@ -117,13 +117,21 @@ event_log_open(const char *override_path)
 	log = calloc(1, sizeof(*log));
 	log->tpm_version = 1;
 	log->fd = runtime_open_eventlog(override_path);
+	if (log->fd < 0) {
+		event_log_close(log);
+		return NULL;
+	}
+
 	return log;
 }
 
 void
 event_log_close(tpm_event_log_reader_t *log)
 {
-	close(log->fd);
+	if (log->fd >= 0) {
+		close(log->fd);
+		log->fd = -1;
+	}
 	free(log);
 }
 
