@@ -771,8 +771,12 @@ __tpm_event_parse_ipl(tpm_event_t *ev, tpm_parsed_event_t *parsed, buffer_t *bp)
 	const char *value = (const char *) ev->event_data;
 	unsigned int len = ev->event_size;
 
-	if (len == 0 || *value == '\0')
-		return false;
+	/* An empty IPL is okay - some firmwares generated these, it seems. At least
+	 * my old thinkpad's firmware does this (but that machine has a TPMv1 chip). */
+	if (len == 0 || *value == '\0') {
+		ev->rehash_strategy = EVENT_STRATEGY_COPY;
+		return true;
+	}
 
 	/* ATM, grub2 and shim seem to record the string including its trailing NUL byte */
 	if (value[len - 1] != '\0')

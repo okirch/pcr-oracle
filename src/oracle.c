@@ -560,6 +560,7 @@ predictor_get_event_strategy(unsigned int event_type)
 		TPM2_EFI_HANDOFF_TABLES,
 		TPM2_EFI_HANDOFF_TABLES2,
 		TPM2_EFI_ACTION,
+		TPM2_EVENT_ACTION,
 		TPM2_EVENT_NONHOST_CODE,
 		TPM2_EVENT_NONHOST_CONFIG,
 		TPM2_EVENT_NONHOST_INFO,
@@ -599,7 +600,10 @@ predictor_pre_scan_eventlog(struct predictor *pred, tpm_event_t **stop_event_p)
 		if (ev->rehash_strategy == EVENT_STRATEGY_PARSE_REHASH) {
 			if (!tpm_event_parse(ev, &scan_ctx)) {
 				/* Provide better error logging */
-				fatal("Unable to parse %s event from TPM log\n", tpm_event_type_to_string(ev->event_type));
+				error("Unable to parse %s event from TPM log\n", tpm_event_type_to_string(ev->event_type));
+				if (opt_debug)
+					__tpm_event_print(ev, debug);
+				fatal("Aborting.\n");
 			}
 		}
 
