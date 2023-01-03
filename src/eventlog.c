@@ -37,6 +37,7 @@
 struct tpm_event_log_reader {
 	int			fd;
 	unsigned int		tpm_version;
+	unsigned int		event_count;
 
 	struct tpm_event_log_tcg2_info {
 		uint32_t		platform_class;
@@ -189,7 +190,6 @@ event_log_read_next(tpm_event_log_reader_t *log)
 {
 	tpm_event_t *ev;
 	uint32_t event_size;
-	unsigned int count = 0;
 
 again:
 	ev = calloc(1, sizeof(*ev));
@@ -218,7 +218,7 @@ again:
 	__read_exactly(log->fd, ev->event_data, event_size);
 
 
-	if (ev->event_type == TPM2_EVENT_NO_ACTION && ev->pcr_index == 0 && count == 0
+	if (ev->event_type == TPM2_EVENT_NO_ACTION && ev->pcr_index == 0 && log->event_count == 0
 	 && ev->event_size >= 16) {
 		char *signature = (char *) ev->event_data;
 
@@ -240,7 +240,7 @@ again:
 		}
 	}
 
-	ev->event_index = count++;
+	ev->event_index = log->event_count++;
 	return ev;
 }
 
