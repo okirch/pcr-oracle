@@ -3,4 +3,5 @@
 src/config.h
 Makefile
 pcr-oracle
+man/pcr-oracle.8
 LOG

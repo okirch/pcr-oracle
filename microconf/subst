@@ -8,6 +8,7 @@ function uc_build_sed_script {
 
 	__uc_sed_script="$__uc_scriptdir/sedscript"
 	if [ ! -f "$__uc_sed_script" ]; then
+		uc_date="$(date +'%B %-e, %Y')"
 		for varname in $(set | sed '/^uc_\(.*\)=.*/!d;s//\1/'); do
 			VARNAME=$(echo $varname | tr a-z A-Z)
 			echo "s|@$VARNAME@|$(eval echo \$uc_$varname)|"

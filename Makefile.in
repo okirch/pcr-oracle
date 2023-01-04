@@ -7,6 +7,10 @@ CFLAGS		= -Wall -I /usr/include/tss2 $(CCOPT)
 TSS2_LINK	= -ltss2-esys -ltss2-tctildr -ltss2-rc -ltss2-mu -lcrypto
 TOOLS		= pcr-oracle
 
+MANDIR		= @MANDIR@
+MAN8DIR		= $(MANDIR)/man8
+MANPAGES	= man/pcr-oracle.8
+
 ORACLE_SRCS	= oracle.c \
 		  pcr.c \
 		  rsa.c \
@@ -27,11 +31,16 @@ ORACLE_SRCS	= oracle.c \
 		  util.c
 ORACLE_OBJS	= $(addprefix build/,$(patsubst %.c,%.o,$(ORACLE_SRCS)))
 
-all: $(TOOLS)
+all: $(TOOLS) $(MANPAGES)
 
-install:: $(TOOLS)
+install:: $(TOOLS) $(MANPAGES)
 	install -d $(DESTDIR)/bin
 	install -m 755 $(TOOLS) $(DESTDIR)/bin
+	install -d $(DESTDIR)$(MAN8DIR)
+	install -m 644 $(MANPAGES) $(DESTDIR)$(MAN8DIR)
+
+man/%.8: man/%.8.in
+	./microconf/subst $@
 
 clean:
 	rm -f $(TOOLS)
@@ -47,6 +56,7 @@ build/%.o: src/%.c
 DIST_FILES = \
 	Makefile.in \
 	src \
+	man \
 	configure microconf \
 	README.md \
 	test-authorized.sh

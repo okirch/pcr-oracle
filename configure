@@ -12,7 +12,7 @@
 # Invoke with --help for a description of options
 #
 # microconf:begin
-# version 0.4
+# version 0.4.1
 # require libtss2
 # disable debug-authenticode
 # microconf:end
@@ -36,3 +36,4 @@ uc_define_version pcr_oracle_version
 
 uc_subst Makefile
 uc_subst src/config.h
+uc_subst man/pcr-oracle.8
