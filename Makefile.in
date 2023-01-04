@@ -47,7 +47,7 @@ build/%.o: src/%.c
 DIST_FILES = \
 	Makefile.in \
 	src \
-	configure microconf RELEASE \
+	configure microconf \
 	README.md \
 	test-authorized.sh
 
