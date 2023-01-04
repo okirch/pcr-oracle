@@ -290,6 +290,14 @@ Specify the RSA secret key to be used with authorized policies.
 .BI --public-key " path
 Specify an RSA public key to be used with authorized policies.
 .TP
+.BI --rsa-generate-key
+When used while creating an authorized policy, this will generate
+the RSA private key "on the fly". This should not be different from
+what \fBopenssl genrsa\fP does; the only reason this switch exists is
+that it may save you from increasing the footprint of your installed
+system (by not having to install the openssl command line utilities,
+for example).
+.TP
 .BI --tpm-eventlog " path
 By default, the tool will read the current TPM event log. It is possible
 to process an event log generated on a different system by specifying it

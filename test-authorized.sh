@@ -32,12 +32,8 @@ echo "This is super secret" >$TESTDIR/secret
 set -e
 cd $TESTDIR
 
-if [ ! -f policy-key.pem ]; then
-	echo "Generating new RSA key"
-	openssl genrsa -out policy-key.pem
-fi
-
 call_oracle \
+	--rsa-generate-key \
 	--private-key policy-key.pem \
 	--auth authorized.policy \
 	create-authorized-policy $PCR_MASK

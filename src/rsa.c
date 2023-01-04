@@ -93,6 +93,33 @@ fail:
 }
 
 /*
+ * Write a private key to a PEM file.
+ * Pass phrases currently not supported.
+ */
+bool
+tpm_rsa_key_write_private(const char *pathname, const tpm_rsa_key_t *key)
+{
+	bool ok = false;
+	FILE *fp;
+
+	if (!(fp = fopen(pathname, "w"))) {
+		error("Cannot read RSA private key from %s: %m\n", pathname);
+		goto fail;
+	}
+
+	if (!PEM_write_PrivateKey(fp, key->pkey, NULL, NULL, 0, 0, NULL)) {
+		error("Unable to write private key to %s\n", pathname);
+		goto fail;
+	}
+
+	ok = true;
+
+fail:
+	fclose(fp);
+	return ok;
+}
+
+/*
  * Read a private key from a PEM file.
  * Pass phrases currently not supported.
  */
@@ -124,6 +151,41 @@ tpm_rsa_key_read_private(const char *pathname)
 fail:
 	if (pkey)
 		EVP_PKEY_free(pkey);
+	return NULL;
+}
+
+tpm_rsa_key_t *
+tpm_rsa_generate(unsigned int bits)
+{
+	BIGNUM *exp = NULL;
+	RSA *rsa = NULL;
+	EVP_PKEY *pkey = NULL;
+
+	exp = BN_new();
+	if (!BN_set_word(exp, RSA_F4))
+		goto failed;
+
+	rsa = RSA_new();
+	if (!RSA_generate_key_ex(rsa, bits, exp, NULL))
+		goto failed;
+
+	BN_free(exp);
+	exp = NULL;
+
+	pkey = EVP_PKEY_new();
+	if (!EVP_PKEY_set1_RSA(pkey, rsa))
+		goto failed;
+
+	return tpm_rsa_key_alloc("<generated>", pkey, true);
+
+failed:
+	error("Failed to generate %u bit RSA key\n", bits);
+	if (pkey)
+		EVP_PKEY_free(pkey);
+	else if (rsa)
+		RSA_free(rsa);
+	if (exp)
+		BN_free(exp);
 	return NULL;
 }
 

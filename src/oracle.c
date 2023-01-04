@@ -31,6 +31,7 @@
 #include "runtime.h"
 #include "pcr.h"
 #include "digest.h"
+#include "rsa.h"
 #include "testcase.h"
 
 enum {
@@ -84,6 +85,7 @@ enum {
 	OPT_TPM_EVENTLOG,
 	OPT_RSA_PRIVATE_KEY,
 	OPT_RSA_PUBLIC_KEY,
+	OPT_RSA_GENERATE_KEY,
 	OPT_INPUT,
 	OPT_OUTPUT,
 	OPT_AUTHORIZED_POLICY,
@@ -109,6 +111,7 @@ static struct option options[] = {
 
 	{ "private-key",	required_argument,	0,	OPT_RSA_PRIVATE_KEY },
 	{ "public-key",		required_argument,	0,	OPT_RSA_PUBLIC_KEY },
+	{ "rsa-generate-key",	no_argument,		0,	OPT_RSA_GENERATE_KEY },
 	{ "input",		required_argument,	0,	OPT_INPUT },
 	{ "output",		required_argument,	0,	OPT_OUTPUT },
 	{ "authorized-policy",	required_argument,	0,	OPT_AUTHORIZED_POLICY },
@@ -981,6 +984,7 @@ main(int argc, char **argv)
 	char *opt_pcr_policy = NULL;
 	char *opt_rsa_private_key = NULL;
 	char *opt_rsa_public_key = NULL;
+	bool opt_rsa_generate = false;
 	int c, exit_code = 0;
 
 	while ((c = getopt_long(argc, argv, "dhA:CF:LSZ", options, NULL)) != EOF) {
@@ -1038,6 +1042,9 @@ main(int argc, char **argv)
 			break;
 		case OPT_RSA_PUBLIC_KEY:
 			opt_rsa_public_key = optarg;
+			break;
+		case OPT_RSA_GENERATE_KEY:
+			opt_rsa_generate = true;
 			break;
 		case OPT_INPUT:
 			opt_input = optarg;
@@ -1122,6 +1129,20 @@ main(int argc, char **argv)
 	}
 
 	if (action == ACTION_CREATE_AUTH_POLICY) {
+		/* If we're asked to generate a new RSA key, do so.
+		 * This doesn't add anything beyond what "openssl genrsa" would do,
+		 * except it saves you from installing the openssl tool suite if you
+		 * don't want it. */
+		if (opt_rsa_generate) {
+			tpm_rsa_key_t *key;
+
+			infomsg("Generating new RSA key\n");
+			if (!(key = tpm_rsa_generate(2048)))
+				return 1;
+			if (!tpm_rsa_key_write_private(opt_rsa_private_key, key))
+				return 1;
+		}
+
 		if (!pcr_authorized_policy_create(pcr_selection, opt_rsa_private_key, opt_authorized_policy))
 			return 1;
 
