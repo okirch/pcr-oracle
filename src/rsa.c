@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h> /* for umask */
 
 #include <openssl/pem.h>
 #include <tss2_esys.h>
@@ -100,10 +101,15 @@ bool
 tpm_rsa_key_write_private(const char *pathname, const tpm_rsa_key_t *key)
 {
 	bool ok = false;
+	mode_t omask;
 	FILE *fp;
 
+	/* Turn off group and other rw bits to make the private key mode 600 
+	 * right from the start. */
+	omask = umask(077);
+
 	if (!(fp = fopen(pathname, "w"))) {
-		error("Cannot read RSA private key from %s: %m\n", pathname);
+		error("Cannot open RSA private key file %s: %m\n", pathname);
 		goto fail;
 	}
 
@@ -115,6 +121,9 @@ tpm_rsa_key_write_private(const char *pathname, const tpm_rsa_key_t *key)
 	ok = true;
 
 fail:
+	/* Reset the umask */
+	umask(omask);
+
 	fclose(fp);
 	return ok;
 }
