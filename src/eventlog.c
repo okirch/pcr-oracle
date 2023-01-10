@@ -284,8 +284,8 @@ __tpm_event_parse_tcg2_info(tpm_event_t *ev, struct tpm_event_log_tcg2_info *inf
 	buffer_skip(&buf, 16);
 
 	if (!buffer_get_u32le(&buf, &info->platform_class)
-	 || !buffer_get_u8(&buf, &info->spec_version_major)
 	 || !buffer_get_u8(&buf, &info->spec_version_minor)
+	 || !buffer_get_u8(&buf, &info->spec_version_major)
 	 || !buffer_get_u8(&buf, &info->spec_errata)
 	 || !buffer_get_u8(&buf, &info->uintn_size)
 	 || !buffer_get_u32le(&buf, &algo_info_count)
